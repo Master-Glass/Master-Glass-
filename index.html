@@ -716,8 +716,8 @@ function renderWhItems(items) {
             #${it._id}
           </div>
           <div class="flex-grow-1 overflow-hidden">
-            <div class="fw-semibold text-truncate">${esc(it.description) || 'Sin descripción'}</div>
-            <div class="text-muted small">${formatDate(it.registeredAt)}</div>
+            <div class="fw-semibold text-truncate">${esc(it.model) || esc(it.description) || 'Sin modelo'}</div>
+            <div class="text-muted small">${esc(it.description) ? esc(it.description) + ' · ' : ''}${formatDate(it.registeredAt)}</div>
           </div>
           ${statusBadge(it.status)}
         </div>
