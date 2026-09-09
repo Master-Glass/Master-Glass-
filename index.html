@@ -310,6 +310,42 @@ const FORM_URL = () => localStorage.getItem('formUrl') ||
   'https://docs.google.com/forms/d/e/1FAIpQLScw-EAfLtRnp04aYufw83xrCCPM7kQYxxbujOpJPsSF8cldBA/viewform';
 
 // ══════════════════════════════════════════════════
+//  STATS (contador en Firestore — evita descargar todo)
+// ══════════════════════════════════════════════════
+const _INC = v => firebase.firestore.FieldValue.increment(v);
+
+async function _updateStats(delta) {
+  // delta: { 'available': -1, 'sold': 1, 'wh.Bodega1.available': -1, ... }
+  const upd = {};
+  for (const [k, v] of Object.entries(delta)) upd[k] = _INC(v);
+  try {
+    await db.collection('_meta').doc('stats').update(upd);
+  } catch(e) {
+    if (e.code === 'not-found') rebuildStats().catch(console.warn);
+    else console.warn('Stats update error:', e);
+  }
+}
+
+async function rebuildStats() {
+  // Reconstruye el documento de estadísticas desde cero
+  // Se ejecuta automáticamente si el doc no existe
+  const snap = await db.collection('items').get();
+  const s = { total:0, available:0, sold:0, merma:0, devolucion:0, wh:{} };
+  snap.docs.forEach(d => {
+    const it = d.data();
+    s.total++;
+    if (s[it.status] !== undefined) s[it.status]++;
+    if (it.warehouse) {
+      if (!s.wh[it.warehouse]) s.wh[it.warehouse] = {total:0,available:0,sold:0,merma:0,devolucion:0};
+      s.wh[it.warehouse].total++;
+      if (s.wh[it.warehouse][it.status] !== undefined) s.wh[it.warehouse][it.status]++;
+    }
+  });
+  await db.collection('_meta').doc('stats').set(s);
+  return s;
+}
+
+// ══════════════════════════════════════════════════
 //  HELPERS
 // ══════════════════════════════════════════════════
 function formatDate(ts) {
@@ -462,23 +498,34 @@ async function renderDashboard() {
   });
 
   try {
-    const snap  = await db.collection('items').get();
-    const items = snap.docs.map(d => ({ _id: d.id, ...d.data() }));
+    const startOfToday = new Date(); startOfToday.setHours(0,0,0,0);
+    const todayTs = firebase.firestore.Timestamp.fromDate(startOfToday);
 
-    // Estadísticas por bodega
+    // 3 consultas pequeñas en paralelo — nunca descarga todo el inventario
+    const [statsSnap, availSnap, todaySnap] = await Promise.all([
+      db.collection('_meta').doc('stats').get(),
+      db.collection('items').where('status','==','available').get(),
+      db.collection('items').where('closedAt','>=',todayTs).orderBy('closedAt','desc').limit(200).get()
+    ]);
+
+    // Si no existe el doc de stats (primera vez), lo construye automáticamente
+    let gs = statsSnap.exists ? statsSnap.data() : await rebuildStats();
+
+    const availItems = availSnap.docs.map(d => ({_id:d.id,...d.data()}));
+    const items      = todaySnap.docs.map(d => ({_id:d.id,...d.data()})); // renombrado para compatibilidad
+
+    const whStats = gs.wh || {};
+    const totalAvailable  = gs.available  || 0;
+    const totalSold       = gs.sold       || 0;
+    const totalMerma      = gs.merma      || 0;
+    const totalDevolucion = gs.devolucion || 0;
+
+    // Construir stats por bodega combinando doc global + items disponibles reales
     const stats = {};
-    WAREHOUSES.forEach(w => { stats[w] = { total:0, available:0, sold:0, merma:0, devolucion:0 }; });
-    items.forEach(it => {
-      if (it.warehouse && stats[it.warehouse]) {
-        stats[it.warehouse].total++;
-        if (stats[it.warehouse][it.status] !== undefined) stats[it.warehouse][it.status]++;
-      }
+    WAREHOUSES.forEach(w => {
+      const ws = whStats[w] || {};
+      stats[w] = { total: ws.total||0, available: ws.available||0, sold: ws.sold||0, merma: ws.merma||0, devolucion: ws.devolucion||0 };
     });
-
-    const totalAvailable  = items.filter(i => i.status === 'available').length;
-    const totalSold       = items.filter(i => i.status === 'sold').length;
-    const totalMerma      = items.filter(i => i.status === 'merma').length;
-    const totalDevolucion = items.filter(i => i.status === 'devolucion').length;
 
     document.getElementById('wh-cards').innerHTML = `
       <!-- Resumen global -->
@@ -521,8 +568,8 @@ async function renderDashboard() {
       `).join('')}
     `;
 
-    // Parabrisas en la calle (disponibles, asignados a técnicos)
-    const streetItems = items.filter(i => i.status === 'available' && i.warehouse);
+    // Parabrisas en la calle (disponibles) — ya vienen de availItems
+    const streetItems = availItems.filter(i => i.warehouse);
     const streetByTech = {};
     streetItems.forEach(it => {
       if (!streetByTech[it.warehouse]) streetByTech[it.warehouse] = [];
@@ -559,20 +606,8 @@ async function renderDashboard() {
       }
     }
 
-    // Actividad de hoy
-    const startOfToday = new Date(); startOfToday.setHours(0,0,0,0);
-    const todayItems = items
-      .filter(i => {
-        const ts = i.soldAt || i.registeredAt;
-        if (!ts) return false;
-        const d = ts.toDate ? ts.toDate() : new Date(ts);
-        return d >= startOfToday;
-      })
-      .sort((a, b) => {
-        const tA = a.soldAt?.toMillis?.() || a.registeredAt?.toMillis?.() || 0;
-        const tB = b.soldAt?.toMillis?.() || b.registeredAt?.toMillis?.() || 0;
-        return tB - tA;
-      });
+    // Actividad de hoy — ya viene ordenada y filtrada de Firestore
+    const todayItems = items;
 
     const countEl = document.getElementById('today-count');
     if (countEl) countEl.textContent = todayItems.length > 0 ? todayItems.length : '';
@@ -636,14 +671,16 @@ async function renderWarehouseDetail(warehouseName, color='#1a56db') {
   `;
 
   try {
-    const snap = await db.collection('items').where('warehouse', '==', warehouseName).get();
+    const snap = await db.collection('items')
+      .where('warehouse','==', warehouseName)
+      .where('status','==','available')
+      .get();
     const items = snap.docs.map(d => ({ _id: d.id, ...d.data() }))
       .sort((a, b) => Number(a._id) - Number(b._id));
 
-    // Guardar en window para filtrar sin re-consultar
-    window._whItems = items;
+    window._whName  = warehouseName;
     window._whColor = color;
-    renderWhItems(items.filter(i => i.status === 'available'));
+    renderWhItems(snap.docs.map(d => ({_id:d.id,...d.data()})));
 
   } catch(e) {
     document.getElementById('warehouse-items').innerHTML =
@@ -679,19 +716,29 @@ function renderWhItems(items) {
 
 function filterItems(status, btn) {
   document.querySelectorAll('#filter-btns .btn').forEach(b => {
-    b.classList.remove('active','btn-primary','btn-success','btn-danger','btn-warning','btn-primary');
+    b.classList.remove('active','btn-success','btn-danger','btn-warning','btn-primary');
     if (!b.classList.contains('btn-outline-success') &&
         !b.classList.contains('btn-outline-danger') &&
         !b.classList.contains('btn-outline-warning') &&
-        !b.classList.contains('btn-outline-primary')) {
+        !b.classList.contains('btn-outline-primary') &&
+        !b.classList.contains('btn-outline-secondary')) {
       b.classList.add('btn-outline-secondary');
     }
   });
   btn.classList.add('active');
 
-  const all = window._whItems || [];
-  const filtered = status === 'all' ? all : all.filter(i => i.status === status);
-  renderWhItems(filtered);
+  const wh = window._whName;
+  if (!wh) return;
+  const el = document.getElementById('warehouse-items');
+  el.innerHTML = `<div class="text-center py-4 text-muted"><div class="spinner-border spinner-border-sm me-2"></div>Cargando...</div>`;
+  let q = db.collection('items').where('warehouse','==', wh);
+  if (status !== 'all') q = q.where('status','==', status);
+  q.get().then(snap => {
+    const items = snap.docs.map(d => ({_id:d.id,...d.data()})).sort((a,b)=>Number(a._id)-Number(b._id));
+    renderWhItems(items);
+  }).catch(e => {
+    el.innerHTML = `<div class="alert alert-danger">Error: ${e.message}</div>`;
+  });
 }
 
 // ══════════════════════════════════════════════════
@@ -733,14 +780,7 @@ async function renderHistorial() {
 
     <div id="hist-list">${loading('Cargando historial...')}</div>
   `;
-  try {
-    const snap = await db.collection('items').get();
-    window._histItems = snap.docs.map(d => ({ _id: d.id, ...d.data() }));
-    renderHistItems('today');
-  } catch(e) {
-    document.getElementById('hist-list').innerHTML =
-      `<div class="alert alert-danger">Error: ${e.message}</div>`;
-  }
+  queryHistorial('today', 'all');
 }
 
 function filterHistorial(period, btn) {
@@ -751,7 +791,7 @@ function filterHistorial(period, btn) {
   btn.classList.remove('btn-outline-secondary');
   btn.classList.add('active','btn-primary');
   window._histPeriod = period;
-  renderHistItems(period, window._histWarehouse);
+  queryHistorial(period, window._histWarehouse || 'all');
 }
 
 function filterHistWh(wh, btn) {
@@ -762,87 +802,137 @@ function filterHistWh(wh, btn) {
   btn.classList.add('active');
   if (wh === 'all') btn.classList.add('btn-dark');
   window._histWarehouse = wh;
-  renderHistItems(window._histPeriod || 'today', wh);
+  queryHistorial(window._histPeriod || 'today', wh);
 }
 
-function renderHistItems(period, warehouse) {
-  const WAREHOUSES = getWarehouses();
-  const all = window._histItems || [];
+// Paginación del historial
+const HIST_PAGE_SIZE = 50;
+window._histCursors = [null]; // cursor[0]=primera pág, cursor[N]=inicio de pág N+1
+window._histPage    = 0;
+window._histBaseQuery = null;
+
+function _buildHistQuery(period, warehouse) {
   const now = new Date();
-  const startOfToday   = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const startOfYest    = new Date(startOfToday); startOfYest.setDate(startOfYest.getDate()-1);
-  const startOfWeek    = new Date(startOfToday); startOfWeek.setDate(startOfWeek.getDate()-7);
-  const startOfMonth   = new Date(now.getFullYear(), now.getMonth(), 1);
+  const d = (y,m,day) => new Date(y,m,day);
+  const fromDate = {
+    today:     d(now.getFullYear(), now.getMonth(), now.getDate()),
+    yesterday: d(now.getFullYear(), now.getMonth(), now.getDate()-1),
+    week:      d(now.getFullYear(), now.getMonth(), now.getDate()-7),
+    month:     d(now.getFullYear(), now.getMonth(), 1),
+    all:       null
+  }[period];
+  const toDate = period === 'yesterday'
+    ? d(now.getFullYear(), now.getMonth(), now.getDate()) : null;
 
-  let filtered = all.filter(it => {
-    const d = getItemActivityDate(it);
-    const periodOk = (() => {
-      if (!d) return period === 'all';
-      switch(period) {
-        case 'today':     return d >= startOfToday;
-        case 'yesterday': return d >= startOfYest && d < startOfToday;
-        case 'week':      return d >= startOfWeek;
-        case 'month':     return d >= startOfMonth;
-        default:          return true;
-      }
-    })();
-    const whOk = !warehouse || warehouse === 'all' || it.warehouse === warehouse;
-    return periodOk && whOk;
-  });
+  let q = db.collection('items').orderBy('closedAt','desc');
+  if (fromDate) q = q.where('closedAt','>=', firebase.firestore.Timestamp.fromDate(fromDate));
+  if (toDate)   q = q.where('closedAt','<',  firebase.firestore.Timestamp.fromDate(toDate));
+  if (warehouse && warehouse !== 'all') q = q.where('warehouse','==', warehouse);
+  return q;
+}
 
-  filtered.sort((a, b) => {
-    const dA = getItemActivityDate(a)?.getTime() || 0;
-    const dB = getItemActivityDate(b)?.getTime() || 0;
-    return dB - dA;
-  });
-
+async function queryHistorial(period, warehouse, page) {
+  page = page ?? 0;
   const el = document.getElementById('hist-list');
-  if (filtered.length === 0) {
-    el.innerHTML = '<p class="text-muted text-center py-4"><i class="bi bi-inbox fs-2 d-block mb-2"></i>Sin actividad en este período</p>';
-    return;
-  }
+  el.innerHTML = `<div class="text-center py-4 text-muted"><div class="spinner-border spinner-border-sm me-2"></div>Cargando...</div>`;
 
-  // Agrupar por día
-  const groups = {};
-  filtered.forEach(it => {
-    const d = getItemActivityDate(it);
-    const key = d
-      ? d.toLocaleDateString('es-CL', { weekday:'long', day:'numeric', month:'long', year:'numeric' })
-      : 'Sin fecha';
-    if (!groups[key]) groups[key] = [];
-    groups[key].push(it);
-  });
+  try {
+    // Si cambia el filtro, reiniciar paginación
+    if (page === 0) {
+      window._histCursors = [null];
+      window._histPage = 0;
+      window._histBaseQuery = _buildHistQuery(period, warehouse);
+    }
 
-  el.innerHTML = Object.entries(groups).map(([day, dayItems]) => `
-    <div class="mb-3">
-      <div class="d-flex align-items-center gap-2 mb-2">
-        <div class="fw-bold text-capitalize" style="font-size:.78rem;color:#475569">${day}</div>
-        <span class="badge rounded-pill" style="background:#e2e8f0;color:#64748b;font-size:.68rem">
-          ${dayItems.length} artículo${dayItems.length!==1?'s':''}
-        </span>
+    let q = window._histBaseQuery;
+    const cursor = window._histCursors[page];
+    if (cursor) q = q.startAfter(cursor);
+    q = q.limit(HIST_PAGE_SIZE + 1); // +1 para saber si hay página siguiente
+
+    const snap = await q.get();
+    const hasNext = snap.size > HIST_PAGE_SIZE;
+    const docs = hasNext ? snap.docs.slice(0, HIST_PAGE_SIZE) : snap.docs;
+    const items = docs.map(d => ({_id:d.id,...d.data()}));
+
+    // Guardar cursor para la página siguiente
+    if (hasNext && !window._histCursors[page + 1]) {
+      window._histCursors[page + 1] = docs[docs.length - 1];
+    }
+    window._histPage = page;
+
+    if (items.length === 0) {
+      el.innerHTML = '<p class="text-muted text-center py-4"><i class="bi bi-inbox fs-2 d-block mb-2"></i>Sin actividad en este período</p>';
+      return;
+    }
+
+    const WAREHOUSES = getWarehouses();
+    const groups = {};
+    items.forEach(it => {
+      const ts = it.closedAt;
+      const date = ts?.toDate ? ts.toDate() : new Date(ts);
+      const key = date.toLocaleDateString('es-CL',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+      if (!groups[key]) groups[key] = [];
+      groups[key].push({it, date});
+    });
+
+    const listHtml = Object.entries(groups).map(([day, entries]) => `
+      <div class="mb-3">
+        <div class="d-flex align-items-center gap-2 mb-2">
+          <div class="fw-bold text-capitalize" style="font-size:.78rem;color:#475569">${day}</div>
+          <span class="badge rounded-pill" style="background:#e2e8f0;color:#64748b;font-size:.68rem">
+            ${entries.length} artículo${entries.length!==1?'s':''}
+          </span>
+        </div>
+        ${entries.map(({it, date}) => {
+          const wIdx = WAREHOUSES.indexOf(it.warehouse);
+          const color = wIdx >= 0 ? WAREHOUSE_COLORS[wIdx] : '#64748b';
+          const hora = date.toLocaleTimeString('es-CL',{hour:'2-digit',minute:'2-digit'});
+          return `
+          <div class="card mb-2 item-row" onclick="showView('item',{id:'${it._id}'})">
+            <div class="card-body py-2 px-3 d-flex align-items-center gap-3">
+              <div class="rounded-circle d-flex align-items-center justify-content-center flex-shrink-0"
+                style="background:${color}18;color:${color};width:38px;height:38px;font-weight:800;font-size:.82rem">
+                #${it._id}
+              </div>
+              <div class="flex-grow-1 overflow-hidden">
+                <div class="fw-semibold text-truncate">${it.model || it.description || 'Sin descripción'}</div>
+                <div class="text-muted small">${it.warehouse||'—'} · ${hora}</div>
+              </div>
+              ${statusBadge(it.status)}
+            </div>
+          </div>`;
+        }).join('')}
       </div>
-      ${dayItems.map(it => {
-        const wIdx = WAREHOUSES.indexOf(it.warehouse);
-        const color = wIdx >= 0 ? WAREHOUSE_COLORS[wIdx] : '#64748b';
-        const d = getItemActivityDate(it);
-        const hora = d ? d.toLocaleTimeString('es-CL',{hour:'2-digit',minute:'2-digit'}) : '';
-        return `
-        <div class="card mb-2 item-row" onclick="showView('item',{id:'${it._id}'})">
-          <div class="card-body py-2 px-3 d-flex align-items-center gap-3">
-            <div class="rounded-circle d-flex align-items-center justify-content-center flex-shrink-0"
-              style="background:${color}18;color:${color};width:38px;height:38px;font-weight:800;font-size:.82rem">
-              #${it._id}
-            </div>
-            <div class="flex-grow-1 overflow-hidden">
-              <div class="fw-semibold text-truncate">${it.description || 'Sin descripción'}</div>
-              <div class="text-muted small">${it.warehouse || '—'}${hora ? ' · ' + hora : ''}</div>
-            </div>
-            ${statusBadge(it.status)}
-          </div>
-        </div>`;
-      }).join('')}
-    </div>
-  `).join('');
+    `).join('');
+
+    // Controles de paginación
+    const pageNum = page + 1;
+    const pagination = `
+      <div class="d-flex align-items-center justify-content-between mt-3 mb-2 px-1">
+        <button class="btn btn-sm btn-outline-secondary" ${page === 0 ? 'disabled' : ''}
+          onclick="queryHistorial(window._histPeriod,'${warehouse}',${page-1})">
+          <i class="bi bi-chevron-left"></i> Anterior
+        </button>
+        <span class="text-muted small fw-semibold">Página ${pageNum}</span>
+        <button class="btn btn-sm btn-outline-secondary" ${!hasNext ? 'disabled' : ''}
+          onclick="queryHistorial(window._histPeriod,'${warehouse}',${page+1})">
+          Siguiente <i class="bi bi-chevron-right"></i>
+        </button>
+      </div>`;
+
+    el.innerHTML = listHtml + pagination;
+
+  } catch(e) {
+    if (e.message && e.message.includes('index')) {
+      el.innerHTML = `<div class="alert alert-warning">
+        <strong>Se necesita un índice en Firestore.</strong><br>
+        <small>El mensaje de error incluye un link directo para crearlo con un clic.</small><br>
+        <small class="text-muted">${e.message}</small>
+      </div>`;
+    } else {
+      el.innerHTML = `<div class="alert alert-danger">Error: ${e.message}</div>`;
+    }
+  }
 }
 
 // ══════════════════════════════════════════════════
@@ -1165,10 +1255,15 @@ function confirmBaja(itemId, status) {
 
 async function doBaja(itemId, status) {
   try {
+    const doc = await db.collection('items').doc(String(itemId)).get();
+    const old = doc.data() || {};
     await db.collection('items').doc(String(itemId)).update({
       status,
       closedAt: firebase.firestore.FieldValue.serverTimestamp()
     });
+    const oldSt = old.status || 'available';
+    const wh = old.warehouse;
+    if (wh) _updateStats({ [oldSt]:-1, [status]:1, [`wh.${wh}.${oldSt}`]:-1, [`wh.${wh}.${status}`]:1 });
     const labels = { sold:'Vendido', merma:'Merma', devolucion:'Devolución' };
     toast(`✓ Marcado como ${labels[status]}`);
     renderItemPage(itemId);
@@ -1193,6 +1288,8 @@ async function registerItem(itemId) {
       model, description: desc, warehouse, status: 'available',
       registeredAt: firebase.firestore.FieldValue.serverTimestamp()
     });
+    // Actualizar contador global
+    _updateStats({ total:1, available:1, [`wh.${warehouse}.total`]:1, [`wh.${warehouse}.available`]:1 });
     toast('✓ Artículo registrado correctamente');
     renderItemPage(itemId);
   } catch(e) {
@@ -1207,10 +1304,20 @@ function showTransfer() {
 }
 async function doTransfer(itemId, newWarehouse) {
   try {
+    const doc = await db.collection('items').doc(String(itemId)).get();
+    const old = doc.data() || {};
+    const oldWh = old.warehouse;
+    const st = old.status || 'available';
     await db.collection('items').doc(String(itemId)).update({
       warehouse: newWarehouse,
       transferredAt: firebase.firestore.FieldValue.serverTimestamp()
     });
+    if (oldWh && oldWh !== newWarehouse) {
+      _updateStats({
+        [`wh.${oldWh}.total`]:-1, [`wh.${oldWh}.${st}`]:-1,
+        [`wh.${newWarehouse}.total`]:1, [`wh.${newWarehouse}.${st}`]:1
+      });
+    }
     toast(`✓ Transferido a ${newWarehouse}`);
     renderItemPage(itemId);
   } catch(e) {
@@ -1294,10 +1401,14 @@ function confirmFinishJob(itemId) {
 
 async function doFinishJob(itemId) {
   try {
+    const doc = await db.collection('items').doc(String(itemId)).get();
+    const old = doc.data() || {};
     await db.collection('items').doc(String(itemId)).update({
       status: 'sold',
       closedAt: firebase.firestore.FieldValue.serverTimestamp()
     });
+    const wh = old.warehouse;
+    if (wh) _updateStats({ available:-1, sold:1, [`wh.${wh}.available`]:-1, [`wh.${wh}.sold`]:1 });
     toast('✓ Trabajo finalizado correctamente', 'success');
     renderItemPage(itemId);
   } catch(e) {
