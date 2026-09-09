@@ -230,6 +230,7 @@
 <!-- SCRIPTS -->
 <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.2/js/bootstrap.bundle.min.js"></script>
@@ -275,11 +276,28 @@ function saveWarehouses(arr) {
 })();
 
 let db, firebaseReady = false;
+let _domReady = false, _authReady = false;
+
+function _tryLaunch() {
+  if (!_domReady || !_authReady) return;
+  const params = new URLSearchParams(window.location.search);
+  const itemId = params.get('item');
+  if (itemId && !isNaN(Number(itemId))) showView('item', { id: itemId });
+  else showView('dashboard');
+}
+
 try {
   firebase.initializeApp(FIREBASE_CONFIG);
   db = firebase.firestore();
-  firebaseReady = true;
-} catch(e) { console.warn('Firebase error:', e); }
+  // Autenticación anónima silenciosa — bloquea accesos externos
+  firebase.auth().signInAnonymously()
+    .then(() => { firebaseReady = true; })
+    .catch(e => { firebaseReady = true; console.warn('Auth error:', e); })
+    .finally(() => { _authReady = true; _tryLaunch(); });
+} catch(e) {
+  console.warn('Firebase error:', e);
+  _authReady = true; _tryLaunch();
+}
 
 // ══════════════════════════════════════════════════
 //  ESTADO GLOBAL
@@ -1664,13 +1682,8 @@ async function exportToWord(from, to) {
 //  INIT
 // ══════════════════════════════════════════════════
 window.addEventListener('DOMContentLoaded', () => {
-  const params = new URLSearchParams(window.location.search);
-  const itemId = params.get('item');
-  if (itemId && !isNaN(Number(itemId))) {
-    showView('item', { id: itemId });
-  } else {
-    showView('dashboard');
-  }
+  _domReady = true;
+  _tryLaunch();
 });
 </script>
 </body>
