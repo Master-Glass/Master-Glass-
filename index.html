@@ -1134,8 +1134,9 @@ async function renderItemPage(itemId) {
               <div id="reassign-form" class="d-none mt-3">
                 <h6 class="mb-2 text-muted" style="font-size:.82rem">Selecciona técnico destino:</h6>
                 ${WAREHOUSES.filter(w => w !== it.warehouse).map(w => `
-                  <button class="btn btn-outline-primary w-100 mb-2" onclick="doTransfer('${itemId}','${esc(w)}')">
-                    <i class="bi bi-person-fill"></i> ${esc(w)}
+                  <button class="btn w-100 mb-2 fw-semibold" onclick="doTransfer('${itemId}','${esc(w)}')"
+                    style="background:#fff;color:#1e293b;border:1.5px solid #cbd5e1">
+                    <i class="bi bi-person-fill me-1"></i> ${esc(w)}
                   </button>`).join('')}
                 <button class="btn btn-link text-muted w-100" onclick="toggleSection('reassign-form')">Cancelar</button>
               </div>
@@ -1226,13 +1227,10 @@ async function renderItemPage(itemId) {
                   Selecciona el motivo:
                 </p>
                 <div class="d-flex gap-2 mb-2">
-                  <button class="btn btn-danger flex-grow-1" onclick="confirmBaja('${itemId}','sold')">
-                    <i class="bi bi-bag-check-fill"></i><br><small>Vendido</small>
-                  </button>
-                  <button class="btn btn-warning flex-grow-1" onclick="confirmBaja('${itemId}','merma')">
+                  <button class="btn btn-warning flex-grow-1 fw-semibold" onclick="confirmBaja('${itemId}','merma')">
                     <i class="bi bi-trash3-fill"></i><br><small>Merma</small>
                   </button>
-                  <button class="btn btn-primary flex-grow-1" onclick="confirmBaja('${itemId}','devolucion')">
+                  <button class="btn btn-primary flex-grow-1 fw-semibold" onclick="confirmBaja('${itemId}','devolucion')">
                     <i class="bi bi-arrow-return-left"></i><br><small>Devolución</small>
                   </button>
                 </div>
