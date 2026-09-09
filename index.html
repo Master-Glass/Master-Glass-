@@ -306,6 +306,8 @@ let currentScanner = null;
 let navHistory = []; // historial de navegación interno
 const APP_URL = localStorage.getItem('appUrl') ||
                 (window.location.origin + window.location.pathname);
+const FORM_URL = () => localStorage.getItem('formUrl') ||
+  'https://docs.google.com/forms/d/e/1FAIpQLScw-EAfLtRnp04aYufw83xrCCPM7kQYxxbujOpJPsSF8cldBA/viewform';
 
 // ══════════════════════════════════════════════════
 //  HELPERS
