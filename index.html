@@ -939,10 +939,10 @@ async function renderItemPage(itemId) {
               <label class="form-label fw-semibold">Técnico / Vehículo <span class="text-danger">*</span></label>
               <select class="form-select" id="inp-warehouse">
                 <option value="">— Selecciona técnico o vehículo —</option>
-                \${WAREHOUSES.map(w => `<option value="\${w}">\${w}</option>`).join('')}
+                ${WAREHOUSES.map(w => `<option value="${w}">${w}</option>`).join('')}
               </select>
             </div>
-            <button class="btn btn-primary w-100 btn-lg" onclick="registerItem('\${itemId}')">
+            <button class="btn btn-primary w-100 btn-lg" onclick="registerItem('${itemId}')">
               <i class="bi bi-check-lg"></i> Registrar
             </button>
           </div>
@@ -966,23 +966,23 @@ async function renderItemPage(itemId) {
             </div>
             <table class="table table-sm mb-0">
               <tbody>
-                <tr><td class="text-muted" style="width:110px">Artículo</td><td><strong>#\${itemId}</strong></td></tr>
-                \${it.model ? `<tr><td class="text-muted">Vehículo</td><td><span class="fw-semibold">\${it.model}</span></td></tr>` : ''}
-                \${it.description ? `<tr><td class="text-muted">Descripción</td><td>\${it.description}</td></tr>` : ''}
+                <tr><td class="text-muted" style="width:110px">Artículo</td><td><strong>#${itemId}</strong></td></tr>
+                ${it.model ? `<tr><td class="text-muted">Vehículo</td><td><span class="fw-semibold">${it.model}</span></td></tr>` : ''}
+                ${it.description ? `<tr><td class="text-muted">Descripción</td><td>${it.description}</td></tr>` : ''}
                 <tr>
                   <td class="text-muted">Técnico</td>
-                  <td><span class="badge rounded-pill" style="background:\${color}20;color:\${color}">\${it.warehouse || '—'}</span></td>
+                  <td><span class="badge rounded-pill" style="background:${color}20;color:${color}">${it.warehouse || '—'}</span></td>
                 </tr>
-                <tr><td class="text-muted">Registrado</td><td>\${formatDate(it.registeredAt)}</td></tr>
-                \${isDone ? `<tr><td class="text-muted">Baja</td><td>\${formatDate(it.closedAt)}</td></tr>` : ''}
-                \${it.photoLabel ? `<tr><td class="text-muted">Foto etiqueta</td><td><img src="\${it.photoLabel}" class="img-fluid rounded" style="max-height:120px;cursor:pointer" onclick="showLargePhoto('\${it.photoLabel}')"></td></tr>` : ''}
-                \${it.photoVehicle ? `<tr><td class="text-muted">Foto vehículo</td><td><img src="\${it.photoVehicle}" class="img-fluid rounded" style="max-height:120px;cursor:pointer" onclick="showLargePhoto('\${it.photoVehicle}')"></td></tr>` : ''}
+                <tr><td class="text-muted">Registrado</td><td>${formatDate(it.registeredAt)}</td></tr>
+                ${isDone ? `<tr><td class="text-muted">Baja</td><td>${formatDate(it.closedAt)}</td></tr>` : ''}
+                ${it.photoLabel ? `<tr><td class="text-muted">Foto etiqueta</td><td><img src="${it.photoLabel}" class="img-fluid rounded" style="max-height:120px;cursor:pointer" onclick="showLargePhoto('${it.photoLabel}')"></td></tr>` : ''}
+                ${it.photoVehicle ? `<tr><td class="text-muted">Foto vehículo</td><td><img src="${it.photoVehicle}" class="img-fluid rounded" style="max-height:120px;cursor:pointer" onclick="showLargePhoto('${it.photoVehicle}')"></td></tr>` : ''}
               </tbody>
             </table>
           </div>
         </div>
 
-        \${!isDone ? `
+        ${!isDone ? `
           <!-- Reasignar técnico -->
           <div class="card mb-3">
             <div class="card-body py-2 px-3">
@@ -991,9 +991,9 @@ async function renderItemPage(itemId) {
               </button>
               <div id="reassign-form" class="d-none mt-3">
                 <h6 class="mb-2 text-muted" style="font-size:.82rem">Selecciona técnico destino:</h6>
-                \${WAREHOUSES.filter(w => w !== it.warehouse).map(w => `
-                  <button class="btn btn-outline-primary w-100 mb-2" onclick="doTransfer('\${itemId}','\${w}')">
-                    <i class="bi bi-person-fill"></i> \${w}
+                ${WAREHOUSES.filter(w => w !== it.warehouse).map(w => `
+                  <button class="btn btn-outline-primary w-100 mb-2" onclick="doTransfer('${itemId}','${w}')">
+                    <i class="bi bi-person-fill"></i> ${w}
                   </button>`).join('')}
                 <button class="btn btn-link text-muted w-100" onclick="toggleSection('reassign-form')">Cancelar</button>
               </div>
@@ -1018,38 +1018,38 @@ async function renderItemPage(itemId) {
               <div class="row g-2 mb-3">
                 <div class="col-6">
                   <label class="d-block text-center p-2 border rounded-3" style="cursor:pointer;border-style:dashed!important;min-height:90px;position:relative"
-                    onclick="document.getElementById('photo-label-\${itemId}').click()">
-                    <div id="preview-label-\${itemId}" style="display:none;position:absolute;inset:4px;border-radius:8px;overflow:hidden">
+                    onclick="document.getElementById('photo-label-${itemId}').click()">
+                    <div id="preview-label-${itemId}" style="display:none;position:absolute;inset:4px;border-radius:8px;overflow:hidden">
                       <img style="width:100%;height:100%;object-fit:cover">
                     </div>
-                    <div id="placeholder-label-\${itemId}" class="d-flex flex-column align-items-center justify-content-center h-100" style="min-height:82px">
+                    <div id="placeholder-label-${itemId}" class="d-flex flex-column align-items-center justify-content-center h-100" style="min-height:82px">
                       <i class="bi bi-upc-scan text-primary" style="font-size:1.6rem"></i>
                       <small class="text-muted mt-1">Foto etiqueta</small>
                     </div>
                   </label>
-                  <input type="file" id="photo-label-\${itemId}" accept="image/*" capture="environment" class="d-none"
-                    onchange="previewPhoto(this,'label','\${itemId}')">
+                  <input type="file" id="photo-label-${itemId}" accept="image/*" capture="environment" class="d-none"
+                    onchange="previewPhoto(this,'label','${itemId}')">
                 </div>
                 <div class="col-6">
                   <label class="d-block text-center p-2 border rounded-3" style="cursor:pointer;border-style:dashed!important;min-height:90px;position:relative"
-                    onclick="document.getElementById('photo-vehicle-\${itemId}').click()">
-                    <div id="preview-vehicle-\${itemId}" style="display:none;position:absolute;inset:4px;border-radius:8px;overflow:hidden">
+                    onclick="document.getElementById('photo-vehicle-${itemId}').click()">
+                    <div id="preview-vehicle-${itemId}" style="display:none;position:absolute;inset:4px;border-radius:8px;overflow:hidden">
                       <img style="width:100%;height:100%;object-fit:cover">
                     </div>
-                    <div id="placeholder-vehicle-\${itemId}" class="d-flex flex-column align-items-center justify-content-center h-100" style="min-height:82px">
+                    <div id="placeholder-vehicle-${itemId}" class="d-flex flex-column align-items-center justify-content-center h-100" style="min-height:82px">
                       <i class="bi bi-car-front-fill text-success" style="font-size:1.6rem"></i>
                       <small class="text-muted mt-1">Foto vehículo</small>
                     </div>
                   </label>
-                  <input type="file" id="photo-vehicle-\${itemId}" accept="image/*" capture="environment" class="d-none"
-                    onchange="previewPhoto(this,'vehicle','\${itemId}')">
+                  <input type="file" id="photo-vehicle-${itemId}" accept="image/*" capture="environment" class="d-none"
+                    onchange="previewPhoto(this,'vehicle','${itemId}')">
                 </div>
               </div>
 
               <!-- Google Form -->
-              \${FORM_URL() ? `
+              ${FORM_URL() ? `
                 <a class="btn btn-outline-primary w-100 mb-2"
-                  href="\${FORM_URL()}" target="_blank" rel="noopener">
+                  href="${FORM_URL()}" target="_blank" rel="noopener">
                   <i class="bi bi-file-earmark-text-fill"></i> Abrir ticket en Google Forms
                 </a>
               ` : `
@@ -1060,7 +1060,7 @@ async function renderItemPage(itemId) {
               `}
 
               <!-- Guardar fotos -->
-              <button class="btn btn-success w-100" onclick="saveFinishPhotos('\${itemId}')">
+              <button class="btn btn-success w-100" onclick="saveFinishPhotos('${itemId}')">
                 <i class="bi bi-cloud-upload-fill"></i> Guardar fotos del trabajo
               </button>
             </div>
@@ -1077,13 +1077,13 @@ async function renderItemPage(itemId) {
                   Selecciona el motivo:
                 </p>
                 <div class="d-flex gap-2 mb-2">
-                  <button class="btn btn-danger flex-grow-1" onclick="confirmBaja('\${itemId}','sold')">
+                  <button class="btn btn-danger flex-grow-1" onclick="confirmBaja('${itemId}','sold')">
                     <i class="bi bi-bag-check-fill"></i><br><small>Vendido</small>
                   </button>
-                  <button class="btn btn-warning flex-grow-1" onclick="confirmBaja('\${itemId}','merma')">
+                  <button class="btn btn-warning flex-grow-1" onclick="confirmBaja('${itemId}','merma')">
                     <i class="bi bi-trash3-fill"></i><br><small>Merma</small>
                   </button>
-                  <button class="btn btn-primary flex-grow-1" onclick="confirmBaja('\${itemId}','devolucion')">
+                  <button class="btn btn-primary flex-grow-1" onclick="confirmBaja('${itemId}','devolucion')">
                     <i class="bi bi-arrow-return-left"></i><br><small>Devolución</small>
                   </button>
                 </div>
@@ -1093,7 +1093,7 @@ async function renderItemPage(itemId) {
           </div>
         ` : `
           <div class="alert alert-secondary text-center">
-            <i class="bi bi-info-circle"></i> Este artículo fue dado de baja como <strong>\${sInfo.label}</strong>.
+            <i class="bi bi-info-circle"></i> Este artículo fue dado de baja como <strong>${sInfo.label}</strong>.
           </div>
         `}
       `;
@@ -1471,11 +1471,11 @@ function renderSettings() {
         </p>
         <input type="url" class="form-control mb-2" id="app-url-input"
           placeholder="https://master-glass.github.io/Master-Glass-/"
-          value="\${localStorage.getItem('appUrl') || ''}">
+          value="${localStorage.getItem('appUrl') || ''}">
         <button class="btn btn-primary w-100" onclick="saveAppUrl()">
           <i class="bi bi-check-lg"></i> Guardar URL
         </button>
-        \${localStorage.getItem('appUrl')
+        ${localStorage.getItem('appUrl')
           ? `<div class="mt-2 small text-success"><i class="bi bi-check-circle-fill"></i> URL configurada correctamente</div>`
           : `<div class="mt-2 small" style="color:#f59e0b"><i class="bi bi-exclamation-triangle-fill"></i> Sin configurar — los QR no funcionarán correctamente</div>`
         }
@@ -1492,11 +1492,11 @@ function renderSettings() {
         </p>
         <input type="url" class="form-control mb-2" id="form-url-input"
           placeholder="https://docs.google.com/forms/d/e/.../viewform"
-          value="\${localStorage.getItem('formUrl') || ''}">
+          value="${localStorage.getItem('formUrl') || ''}">
         <button class="btn btn-primary w-100" onclick="saveFormUrl()">
           <i class="bi bi-check-lg"></i> Guardar link del formulario
         </button>
-        \${localStorage.getItem('formUrl')
+        ${localStorage.getItem('formUrl')
           ? `<div class="mt-2 small text-success"><i class="bi bi-check-circle-fill"></i> Formulario configurado</div>`
           : `<div class="mt-2 small" style="color:#f59e0b"><i class="bi bi-exclamation-triangle-fill"></i> Sin configurar — los técnicos no podrán acceder al formulario</div>`
         }
