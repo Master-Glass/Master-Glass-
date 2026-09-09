@@ -369,6 +369,7 @@ async function showView(view, params={}, addToHistory=true) {
     case 'warehouse':  return renderWarehouseDetail(params.name, params.color);
     case 'settings':   return renderSettings();
     case 'history':    return renderHistorial();
+    case 'finish':     return renderFinishJob(params.id);
   }
 }
 
@@ -395,8 +396,21 @@ async function renderDashboard() {
     </h6>
     <div id="wh-cards">${loading()}</div>
 
-    <!-- Actividad Hoy colapsable -->
+    <!-- En la calle -->
     <div class="mt-4 mb-1 d-flex align-items-center justify-content-between"
+         style="cursor:pointer" data-bs-toggle="collapse" data-bs-target="#street-collapse">
+      <h6 class="text-muted fw-bold mb-0 text-uppercase" style="font-size:.72rem;letter-spacing:.06em">
+        <i class="bi bi-truck me-1" style="color:#10b981"></i>En la Calle
+        <span id="street-count" class="badge rounded-pill ms-1" style="background:#10b98120;color:#065f46;font-size:.68rem"></span>
+      </h6>
+      <i class="bi bi-chevron-down text-muted" style="font-size:.8rem;transition:transform .2s" id="street-chevron"></i>
+    </div>
+    <div class="collapse show" id="street-collapse">
+      <div id="street-list">${loading()}</div>
+    </div>
+
+    <!-- Actividad Hoy colapsable -->
+    <div class="mt-3 mb-1 d-flex align-items-center justify-content-between"
          style="cursor:pointer" data-bs-toggle="collapse" data-bs-target="#activity-collapse">
       <h6 class="text-muted fw-bold mb-0 text-uppercase" style="font-size:.72rem;letter-spacing:.06em">
         <i class="bi bi-sun-fill me-1" style="color:#f59e0b"></i>Actividad de Hoy
@@ -414,6 +428,12 @@ async function renderDashboard() {
     </div>
   `;
   // Rotar chevron al colapsar/expandir
+  document.getElementById('street-collapse').addEventListener('hide.bs.collapse', () => {
+    document.getElementById('street-chevron').style.transform = 'rotate(-90deg)';
+  });
+  document.getElementById('street-collapse').addEventListener('show.bs.collapse', () => {
+    document.getElementById('street-chevron').style.transform = 'rotate(0deg)';
+  });
   document.getElementById('activity-collapse').addEventListener('hide.bs.collapse', () => {
     document.getElementById('act-chevron').style.transform = 'rotate(-90deg)';
   });
@@ -480,6 +500,44 @@ async function renderDashboard() {
         </div>
       `).join('')}
     `;
+
+    // Parabrisas en la calle (disponibles, asignados a técnicos)
+    const streetItems = items.filter(i => i.status === 'available' && i.warehouse);
+    const streetByTech = {};
+    streetItems.forEach(it => {
+      if (!streetByTech[it.warehouse]) streetByTech[it.warehouse] = [];
+      streetByTech[it.warehouse].push(it);
+    });
+
+    const streetCountEl = document.getElementById('street-count');
+    if (streetCountEl) streetCountEl.textContent = streetItems.length > 0 ? streetItems.length : '';
+
+    const streetListEl = document.getElementById('street-list');
+    if (streetListEl) {
+      if (streetItems.length === 0) {
+        streetListEl.innerHTML = '<p class="text-muted text-center py-3"><i class="bi bi-check-circle me-1"></i>No hay parabrisas en la calle ahora</p>';
+      } else {
+        streetListEl.innerHTML = Object.entries(streetByTech).map(([tech, its]) => {
+          const wIdx = WAREHOUSES.indexOf(tech);
+          const color = wIdx >= 0 ? WAREHOUSE_COLORS[wIdx] : '#64748b';
+          return `
+            <div class="card mb-2" onclick="showView('warehouse',{name:'${tech}',color:'${color}'})" style="cursor:pointer;border-left:4px solid ${color}">
+              <div class="card-body py-2 px-3">
+                <div class="d-flex justify-content-between align-items-center">
+                  <span class="fw-bold" style="color:${color}"><i class="bi bi-person-fill"></i> ${tech}</span>
+                  <span class="badge rounded-pill" style="background:${color}20;color:${color};font-size:.85rem;font-weight:800">
+                    ${its.length} <small style="font-weight:600">parabrisas</small>
+                  </span>
+                </div>
+                <div class="mt-1" style="font-size:.78rem;color:#64748b">
+                  ${its.slice(0,3).map(i => `<span class="me-2">#${i._id} ${i.model ? '· ' + i.model.slice(0,25) : ''}</span>`).join('')}
+                  ${its.length > 3 ? `<span>+${its.length-3} más</span>` : ''}
+                </div>
+              </div>
+            </div>`;
+        }).join('');
+      }
+    }
 
     // Actividad de hoy
     const startOfToday = new Date(); startOfToday.setHours(0,0,0,0);
@@ -850,19 +908,24 @@ async function renderItemPage(itemId) {
           <div class="card-body">
             <h6 class="card-title mb-3"><i class="bi bi-pencil-square"></i> Registrar Artículo</h6>
             <div class="mb-3">
-              <label class="form-label fw-semibold">Descripción <span class="text-danger">*</span></label>
-              <textarea class="form-control" id="inp-desc" rows="3"
-                placeholder="Ej: Ventana de vidrio templado 1.2×2m, color bronce..."></textarea>
+              <label class="form-label fw-semibold"><i class="bi bi-car-front-fill me-1 text-primary"></i>Modelo del vehículo <span class="text-danger">*</span></label>
+              <input type="text" class="form-control" id="inp-model"
+                placeholder="Ej: Toyota Corolla 2020 - parabrisas delantero">
+            </div>
+            <div class="mb-3">
+              <label class="form-label fw-semibold">Descripción del vidrio <span class="text-muted small">(opcional)</span></label>
+              <textarea class="form-control" id="inp-desc" rows="2"
+                placeholder="Ej: Ventana trasera, color bronce..."></textarea>
             </div>
             <div class="mb-4">
-              <label class="form-label fw-semibold">Bodega de destino <span class="text-danger">*</span></label>
+              <label class="form-label fw-semibold">Técnico / Vehículo <span class="text-danger">*</span></label>
               <select class="form-select" id="inp-warehouse">
-                <option value="">— Selecciona una bodega —</option>
-                ${WAREHOUSES.map(w => `<option value="${w}">${w}</option>`).join('')}
+                <option value="">— Selecciona técnico o vehículo —</option>
+                \${WAREHOUSES.map(w => `<option value="\${w}">\${w}</option>`).join('')}
               </select>
             </div>
-            <button class="btn btn-primary w-100 btn-lg" onclick="registerItem('${itemId}')">
-              <i class="bi bi-check-lg"></i> Registrar en Bodega
+            <button class="btn btn-primary w-100 btn-lg" onclick="registerItem('\${itemId}')">
+              <i class="bi bi-check-lg"></i> Registrar
             </button>
           </div>
         </div>
@@ -885,54 +948,134 @@ async function renderItemPage(itemId) {
             </div>
             <table class="table table-sm mb-0">
               <tbody>
-                <tr><td class="text-muted" style="width:110px">Artículo</td><td><strong>#${itemId}</strong></td></tr>
-                <tr><td class="text-muted">Descripción</td><td>${it.description || '—'}</td></tr>
+                <tr><td class="text-muted" style="width:110px">Artículo</td><td><strong>#\${itemId}</strong></td></tr>
+                \${it.model ? `<tr><td class="text-muted">Vehículo</td><td><span class="fw-semibold">\${it.model}</span></td></tr>` : ''}
+                \${it.description ? `<tr><td class="text-muted">Descripción</td><td>\${it.description}</td></tr>` : ''}
                 <tr>
-                  <td class="text-muted">Bodega</td>
-                  <td><span class="badge rounded-pill" style="background:${color}20;color:${color}">${it.warehouse || '—'}</span></td>
+                  <td class="text-muted">Técnico</td>
+                  <td><span class="badge rounded-pill" style="background:\${color}20;color:\${color}">\${it.warehouse || '—'}</span></td>
                 </tr>
-                <tr><td class="text-muted">Registrado</td><td>${formatDate(it.registeredAt)}</td></tr>
-                ${isDone ? `<tr><td class="text-muted">Baja</td><td>${formatDate(it.closedAt)}</td></tr>` : ''}
+                <tr><td class="text-muted">Registrado</td><td>\${formatDate(it.registeredAt)}</td></tr>
+                \${isDone ? `<tr><td class="text-muted">Baja</td><td>\${formatDate(it.closedAt)}</td></tr>` : ''}
+                \${it.photoLabel ? `<tr><td class="text-muted">Foto etiqueta</td><td><img src="\${it.photoLabel}" class="img-fluid rounded" style="max-height:120px;cursor:pointer" onclick="showLargePhoto('\${it.photoLabel}')"></td></tr>` : ''}
+                \${it.photoVehicle ? `<tr><td class="text-muted">Foto vehículo</td><td><img src="\${it.photoVehicle}" class="img-fluid rounded" style="max-height:120px;cursor:pointer" onclick="showLargePhoto('\${it.photoVehicle}')"></td></tr>` : ''}
               </tbody>
             </table>
           </div>
         </div>
 
-        ${!isDone ? `
-          <!-- Opciones de baja -->
-          <div id="baja-section">
-            <p class="text-muted small mb-2 fw-semibold text-uppercase" style="font-size:.7rem;letter-spacing:.05em">
-              Dar de baja este artículo:
-            </p>
-            <div class="d-flex gap-2 mb-2">
-              <button class="btn btn-danger flex-grow-1" onclick="confirmBaja('${itemId}','sold')">
-                <i class="bi bi-bag-check-fill"></i><br><small>Vendido</small>
+        \${!isDone ? `
+          <!-- Reasignar técnico -->
+          <div class="card mb-3">
+            <div class="card-body py-2 px-3">
+              <button class="btn btn-outline-secondary w-100" onclick="toggleSection('reassign-form')">
+                <i class="bi bi-arrow-left-right"></i> Reasignar a otro técnico / vehículo
               </button>
-              <button class="btn btn-warning flex-grow-1" onclick="confirmBaja('${itemId}','merma')">
-                <i class="bi bi-trash3-fill"></i><br><small>Merma</small>
-              </button>
-              <button class="btn btn-primary flex-grow-1" onclick="confirmBaja('${itemId}','devolucion')">
-                <i class="bi bi-arrow-return-left"></i><br><small>Devolución</small>
+              <div id="reassign-form" class="d-none mt-3">
+                <h6 class="mb-2 text-muted" style="font-size:.82rem">Selecciona técnico destino:</h6>
+                \${WAREHOUSES.filter(w => w !== it.warehouse).map(w => `
+                  <button class="btn btn-outline-primary w-100 mb-2" onclick="doTransfer('\${itemId}','\${w}')">
+                    <i class="bi bi-person-fill"></i> \${w}
+                  </button>`).join('')}
+                <button class="btn btn-link text-muted w-100" onclick="toggleSection('reassign-form')">Cancelar</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Finalizar Trabajo -->
+          <div class="card mb-3" style="border: 2px solid #10b981">
+            <div class="card-body">
+              <div class="d-flex align-items-center gap-2 mb-3">
+                <div class="rounded-circle d-flex align-items-center justify-content-center"
+                  style="background:#10b98118;color:#10b981;width:40px;height:40px;font-size:1.2rem;flex-shrink:0">
+                  <i class="bi bi-check-circle-fill"></i>
+                </div>
+                <div>
+                  <div class="fw-bold" style="color:#065f46">Finalizar Trabajo</div>
+                  <div class="text-muted small">Toma 2 fotos y envía el ticket</div>
+                </div>
+              </div>
+
+              <!-- Fotos -->
+              <div class="row g-2 mb-3">
+                <div class="col-6">
+                  <label class="d-block text-center p-2 border rounded-3" style="cursor:pointer;border-style:dashed!important;min-height:90px;position:relative"
+                    onclick="document.getElementById('photo-label-\${itemId}').click()">
+                    <div id="preview-label-\${itemId}" style="display:none;position:absolute;inset:4px;border-radius:8px;overflow:hidden">
+                      <img style="width:100%;height:100%;object-fit:cover">
+                    </div>
+                    <div id="placeholder-label-\${itemId}" class="d-flex flex-column align-items-center justify-content-center h-100" style="min-height:82px">
+                      <i class="bi bi-upc-scan text-primary" style="font-size:1.6rem"></i>
+                      <small class="text-muted mt-1">Foto etiqueta</small>
+                    </div>
+                  </label>
+                  <input type="file" id="photo-label-\${itemId}" accept="image/*" capture="environment" class="d-none"
+                    onchange="previewPhoto(this,'label','\${itemId}')">
+                </div>
+                <div class="col-6">
+                  <label class="d-block text-center p-2 border rounded-3" style="cursor:pointer;border-style:dashed!important;min-height:90px;position:relative"
+                    onclick="document.getElementById('photo-vehicle-\${itemId}').click()">
+                    <div id="preview-vehicle-\${itemId}" style="display:none;position:absolute;inset:4px;border-radius:8px;overflow:hidden">
+                      <img style="width:100%;height:100%;object-fit:cover">
+                    </div>
+                    <div id="placeholder-vehicle-\${itemId}" class="d-flex flex-column align-items-center justify-content-center h-100" style="min-height:82px">
+                      <i class="bi bi-car-front-fill text-success" style="font-size:1.6rem"></i>
+                      <small class="text-muted mt-1">Foto vehículo</small>
+                    </div>
+                  </label>
+                  <input type="file" id="photo-vehicle-\${itemId}" accept="image/*" capture="environment" class="d-none"
+                    onchange="previewPhoto(this,'vehicle','\${itemId}')">
+                </div>
+              </div>
+
+              <!-- Google Form -->
+              \${FORM_URL() ? `
+                <a class="btn btn-outline-primary w-100 mb-2"
+                  href="\${FORM_URL()}" target="_blank" rel="noopener">
+                  <i class="bi bi-file-earmark-text-fill"></i> Abrir ticket en Google Forms
+                </a>
+              ` : `
+                <div class="alert alert-warning py-2 mb-2" style="font-size:.82rem">
+                  <i class="bi bi-exclamation-triangle-fill"></i>
+                  Configura el link de Google Forms en <a href="#" onclick="showView('settings')" class="alert-link">Configuración</a>
+                </div>
+              `}
+
+              <!-- Guardar fotos -->
+              <button class="btn btn-success w-100" onclick="saveFinishPhotos('\${itemId}')">
+                <i class="bi bi-cloud-upload-fill"></i> Guardar fotos del trabajo
               </button>
             </div>
-            <div id="confirm-baja-bar"></div>
-            <button class="btn btn-outline-secondary w-100 mt-2" onclick="showTransfer('${itemId}','${it.warehouse}')">
-              <i class="bi bi-arrow-left-right"></i> Transferir a otra Bodega
-            </button>
-            <div id="transfer-form" class="card mt-3 d-none">
-              <div class="card-body">
-                <h6 class="mb-3">Selecciona bodega destino:</h6>
-                ${WAREHOUSES.filter(w => w !== it.warehouse).map(w => `
-                  <button class="btn btn-outline-primary w-100 mb-2" onclick="doTransfer('${itemId}','${w}')">
-                    <i class="bi bi-building"></i> ${w}
-                  </button>`).join('')}
-                <button class="btn btn-link" onclick="document.getElementById('transfer-form').classList.add('d-none')">Cancelar</button>
+          </div>
+
+          <!-- Dar de baja -->
+          <div class="card mb-3">
+            <div class="card-body py-2 px-3">
+              <button class="btn btn-outline-secondary w-100" onclick="toggleSection('baja-section')">
+                <i class="bi bi-exclamation-triangle"></i> Dar de baja (merma / devolución)
+              </button>
+              <div id="baja-section" class="d-none">
+                <p class="text-muted small mt-3 mb-2 fw-semibold text-uppercase" style="font-size:.7rem;letter-spacing:.05em">
+                  Selecciona el motivo:
+                </p>
+                <div class="d-flex gap-2 mb-2">
+                  <button class="btn btn-danger flex-grow-1" onclick="confirmBaja('\${itemId}','sold')">
+                    <i class="bi bi-bag-check-fill"></i><br><small>Vendido</small>
+                  </button>
+                  <button class="btn btn-warning flex-grow-1" onclick="confirmBaja('\${itemId}','merma')">
+                    <i class="bi bi-trash3-fill"></i><br><small>Merma</small>
+                  </button>
+                  <button class="btn btn-primary flex-grow-1" onclick="confirmBaja('\${itemId}','devolucion')">
+                    <i class="bi bi-arrow-return-left"></i><br><small>Devolución</small>
+                  </button>
+                </div>
+                <div id="confirm-baja-bar"></div>
               </div>
             </div>
           </div>
         ` : `
           <div class="alert alert-secondary text-center">
-            <i class="bi bi-info-circle"></i> Este artículo ya fue dado de baja como <strong>${sInfo.label}</strong>.
+            <i class="bi bi-info-circle"></i> Este artículo fue dado de baja como <strong>\${sInfo.label}</strong>.
           </div>
         `}
       `;
@@ -976,10 +1119,11 @@ async function doBaja(itemId, status) {
 }
 
 async function registerItem(itemId) {
+  const model     = document.getElementById('inp-model').value.trim();
   const desc      = document.getElementById('inp-desc').value.trim();
   const warehouse = document.getElementById('inp-warehouse').value;
-  if (!desc)      { toast('Ingresa una descripción', 'warning'); return; }
-  if (!warehouse) { toast('Selecciona una bodega', 'warning'); return; }
+  if (!model)     { toast('Ingresa el modelo del vehículo', 'warning'); return; }
+  if (!warehouse) { toast('Selecciona técnico o vehículo', 'warning'); return; }
 
   const btn = document.querySelector('#item-body .btn-primary');
   btn.disabled = true;
@@ -987,7 +1131,7 @@ async function registerItem(itemId) {
 
   try {
     await db.collection('items').doc(String(itemId)).set({
-      description: desc, warehouse, status: 'available',
+      model, description: desc, warehouse, status: 'available',
       registeredAt: firebase.firestore.FieldValue.serverTimestamp()
     });
     toast('✓ Artículo registrado correctamente');
@@ -1012,6 +1156,94 @@ async function doTransfer(itemId, newWarehouse) {
     renderItemPage(itemId);
   } catch(e) {
     toast('Error: ' + e.message, 'danger');
+  }
+}
+
+function toggleSection(id) {
+  const el = document.getElementById(id);
+  if (el) el.classList.toggle('d-none');
+}
+
+function showLargePhoto(src) {
+  const modal = document.createElement('div');
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:9999;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:16px';
+  modal.onclick = () => modal.remove();
+  const img = document.createElement('img');
+  img.src = src;
+  img.style.cssText = 'max-width:100%;max-height:90vh;border-radius:12px;box-shadow:0 8px 40px rgba(0,0,0,.6)';
+  modal.appendChild(img);
+  document.body.appendChild(modal);
+}
+
+// Previsualización de foto en el botón de captura
+function previewPhoto(input, type, itemId) {
+  if (!input.files[0]) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const preview = document.getElementById(`preview-${type}-${itemId}`);
+    const placeholder = document.getElementById(`placeholder-${type}-${itemId}`);
+    if (preview) {
+      preview.querySelector('img').src = e.target.result;
+      preview.style.display = 'block';
+      if (placeholder) placeholder.style.display = 'none';
+    }
+  };
+  reader.readAsDataURL(input.files[0]);
+}
+
+// Comprimir imagen a base64
+async function compressImage(file, maxPx=800, quality=0.70) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = reject;
+    reader.onload = e => {
+      const img = new Image();
+      img.onerror = reject;
+      img.onload = () => {
+        const scale = Math.min(1, maxPx / Math.max(img.width, img.height));
+        const w = Math.round(img.width * scale);
+        const h = Math.round(img.height * scale);
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+// Guardar fotos del trabajo finalizado
+async function saveFinishPhotos(itemId) {
+  const labelInput   = document.getElementById(`photo-label-${itemId}`);
+  const vehicleInput = document.getElementById(`photo-vehicle-${itemId}`);
+
+  if (!labelInput?.files[0] && !vehicleInput?.files[0]) {
+    toast('Toma al menos una foto antes de guardar', 'warning');
+    return;
+  }
+
+  const btn = document.querySelector('.btn-success');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Guardando...'; }
+
+  try {
+    const update = { photosAt: firebase.firestore.FieldValue.serverTimestamp() };
+
+    if (labelInput?.files[0]) {
+      update.photoLabel = await compressImage(labelInput.files[0]);
+    }
+    if (vehicleInput?.files[0]) {
+      update.photoVehicle = await compressImage(vehicleInput.files[0]);
+    }
+
+    await db.collection('items').doc(String(itemId)).update(update);
+    toast('✓ Fotos guardadas correctamente', 'success');
+    renderItemPage(itemId);
+  } catch(e) {
+    toast('Error al guardar fotos: ' + e.message, 'danger');
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-cloud-upload-fill"></i> Guardar fotos del trabajo'; }
   }
 }
 
@@ -1220,14 +1452,35 @@ function renderSettings() {
           Pega aquí la dirección exacta de tu app en GitHub Pages.
         </p>
         <input type="url" class="form-control mb-2" id="app-url-input"
-          placeholder="https://natostito.github.io/inventario-qr/"
-          value="${localStorage.getItem('appUrl') || ''}">
+          placeholder="https://master-glass.github.io/Master-Glass-/"
+          value="\${localStorage.getItem('appUrl') || ''}">
         <button class="btn btn-primary w-100" onclick="saveAppUrl()">
           <i class="bi bi-check-lg"></i> Guardar URL
         </button>
-        ${localStorage.getItem('appUrl')
+        \${localStorage.getItem('appUrl')
           ? `<div class="mt-2 small text-success"><i class="bi bi-check-circle-fill"></i> URL configurada correctamente</div>`
           : `<div class="mt-2 small" style="color:#f59e0b"><i class="bi bi-exclamation-triangle-fill"></i> Sin configurar — los QR no funcionarán correctamente</div>`
+        }
+      </div>
+    </div>
+
+    <!-- Google Forms URL -->
+    <div class="card mb-3">
+      <div class="card-body">
+        <h6 class="mb-1"><i class="bi bi-file-earmark-text-fill text-danger"></i> Link de Google Forms</h6>
+        <p class="text-muted small mb-3">
+          Link al formulario de ticket de finalización que usan los técnicos.
+          Aparecerá en cada artículo al momento de finalizar el trabajo.
+        </p>
+        <input type="url" class="form-control mb-2" id="form-url-input"
+          placeholder="https://docs.google.com/forms/d/e/.../viewform"
+          value="\${localStorage.getItem('formUrl') || ''}">
+        <button class="btn btn-primary w-100" onclick="saveFormUrl()">
+          <i class="bi bi-check-lg"></i> Guardar link del formulario
+        </button>
+        \${localStorage.getItem('formUrl')
+          ? `<div class="mt-2 small text-success"><i class="bi bi-check-circle-fill"></i> Formulario configurado</div>`
+          : `<div class="mt-2 small" style="color:#f59e0b"><i class="bi bi-exclamation-triangle-fill"></i> Sin configurar — los técnicos no podrán acceder al formulario</div>`
         }
       </div>
     </div>
@@ -1291,6 +1544,14 @@ function saveAppUrl() {
   if (!url) { toast('Ingresa una URL válida','warning'); return; }
   localStorage.setItem('appUrl', url);
   toast('✓ URL guardada');
+  renderSettings();
+}
+
+function saveFormUrl() {
+  const url = document.getElementById('form-url-input').value.trim();
+  localStorage.setItem('formUrl', url || '');
+  toast(url ? '✓ Formulario guardado' : 'Link eliminado');
+  renderSettings();
 }
 
 // ══════════════════════════════════════════════════
