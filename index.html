@@ -924,10 +924,17 @@ async function queryHistorial(period, warehouse, page) {
 
   } catch(e) {
     if (e.message && e.message.includes('index')) {
+      const urlMatch = e.message.match(/https:\/\/\S+/);
+      const indexUrl = urlMatch ? urlMatch[0] : null;
       el.innerHTML = `<div class="alert alert-warning">
-        <strong>Se necesita un índice en Firestore.</strong><br>
-        <small>El mensaje de error incluye un link directo para crearlo con un clic.</small><br>
-        <small class="text-muted">${e.message}</small>
+        <strong><i class="bi bi-exclamation-triangle-fill me-1"></i>Se necesita crear un índice en Firestore</strong><br>
+        <p class="mb-2 mt-1 small">Esta combinación de filtros requiere un índice. Se crea una sola vez con un clic:</p>
+        ${indexUrl
+          ? `<a href="${indexUrl}" target="_blank" rel="noopener" class="btn btn-warning btn-sm fw-bold">
+               <i class="bi bi-box-arrow-up-right me-1"></i>Crear índice en Firebase →
+             </a>`
+          : `<small class="text-muted">${e.message}</small>`
+        }
       </div>`;
     } else {
       el.innerHTML = `<div class="alert alert-danger">Error: ${e.message}</div>`;
