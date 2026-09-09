@@ -1128,8 +1128,9 @@ async function renderItemPage(itemId) {
           <!-- Reasignar técnico -->
           <div class="card mb-3">
             <div class="card-body py-2 px-3">
-              <button class="btn btn-outline-secondary w-100" onclick="toggleSection('reassign-form')">
-                <i class="bi bi-arrow-left-right"></i> Reasignar a otro técnico / vehículo
+              <button class="btn w-100 fw-semibold" onclick="toggleSection('reassign-form')"
+                style="background:#fff;color:#1e293b;border:1.5px solid #cbd5e1">
+                <i class="bi bi-arrow-left-right me-1"></i> Reasignar a otro técnico / vehículo
               </button>
               <div id="reassign-form" class="d-none mt-3">
                 <h6 class="mb-2 text-muted" style="font-size:.82rem">Selecciona técnico destino:</h6>
@@ -1219,8 +1220,9 @@ async function renderItemPage(itemId) {
           <!-- Dar de baja -->
           <div class="card mb-3">
             <div class="card-body py-2 px-3">
-              <button class="btn btn-outline-secondary w-100" onclick="toggleSection('baja-section')">
-                <i class="bi bi-exclamation-triangle"></i> Dar de baja (merma / devolución)
+              <button class="btn w-100 fw-semibold" onclick="toggleSection('baja-section')"
+                style="background:#fff;color:#1e293b;border:1.5px solid #cbd5e1">
+                <i class="bi bi-exclamation-triangle me-1"></i> Dar de baja (merma / devolución)
               </button>
               <div id="baja-section" class="d-none">
                 <p class="text-muted small mt-3 mb-2 fw-semibold text-uppercase" style="font-size:.7rem;letter-spacing:.05em">
