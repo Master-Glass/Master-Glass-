@@ -625,8 +625,8 @@ async function renderWarehouseDetail(warehouseName, color='#1a56db') {
 
     <!-- Filtros -->
     <div class="d-flex gap-2 mb-3 flex-wrap" id="filter-btns">
-      <button class="btn btn-sm btn-primary active" onclick="filterItems('all', this)">Todos</button>
-      <button class="btn btn-sm btn-outline-success" onclick="filterItems('available', this)">Disponibles</button>
+      <button class="btn btn-sm btn-success active" onclick="filterItems('available', this)">Disponibles</button>
+      <button class="btn btn-sm btn-outline-secondary" onclick="filterItems('all', this)">Todos</button>
       <button class="btn btn-sm btn-outline-danger" onclick="filterItems('sold', this)">Vendidos</button>
       <button class="btn btn-sm btn-outline-warning" onclick="filterItems('merma', this)">Merma</button>
       <button class="btn btn-sm btn-outline-primary" onclick="filterItems('devolucion', this)">Devolución</button>
@@ -643,7 +643,7 @@ async function renderWarehouseDetail(warehouseName, color='#1a56db') {
     // Guardar en window para filtrar sin re-consultar
     window._whItems = items;
     window._whColor = color;
-    renderWhItems(items);
+    renderWhItems(items.filter(i => i.status === 'available'));
 
   } catch(e) {
     document.getElementById('warehouse-items').innerHTML =
@@ -706,15 +706,31 @@ function getItemActivityDate(it) {
 async function renderHistorial() {
   if (!requireFirebase()) return;
   const c = document.getElementById('main-content');
+  const WAREHOUSES = getWarehouses();
+  window._histPeriod = 'today';
+  window._histWarehouse = 'all';
   c.innerHTML = `
     <h5 class="fw-bold mb-3"><i class="bi bi-clock-history me-2"></i>Historial</h5>
-    <div class="d-flex gap-2 mb-3 flex-wrap" id="hist-filter-btns">
+
+    <!-- Filtro por período -->
+    <div class="d-flex gap-2 mb-2 flex-wrap" id="hist-filter-btns">
       <button class="btn btn-sm btn-primary active" onclick="filterHistorial('today',this)">Hoy</button>
       <button class="btn btn-sm btn-outline-secondary" onclick="filterHistorial('yesterday',this)">Ayer</button>
-      <button class="btn btn-sm btn-outline-secondary" onclick="filterHistorial('week',this)">Últimos 7 días</button>
+      <button class="btn btn-sm btn-outline-secondary" onclick="filterHistorial('week',this)">7 días</button>
       <button class="btn btn-sm btn-outline-secondary" onclick="filterHistorial('month',this)">Este mes</button>
       <button class="btn btn-sm btn-outline-secondary" onclick="filterHistorial('all',this)">Todo</button>
     </div>
+
+    <!-- Filtro por camioneta -->
+    <div class="d-flex gap-2 mb-3 flex-wrap" id="hist-wh-btns">
+      <button class="btn btn-sm btn-dark active" onclick="filterHistWh('all',this)">Todas</button>
+      ${WAREHOUSES.map((w,i) => {
+        const col = WAREHOUSE_COLORS[i % WAREHOUSE_COLORS.length];
+        return `<button class="btn btn-sm btn-outline-secondary" style="border-color:${col};color:${col}"
+          onclick="filterHistWh('${w}',this)">${w}</button>`;
+      }).join('')}
+    </div>
+
     <div id="hist-list">${loading('Cargando historial...')}</div>
   `;
   try {
@@ -734,10 +750,22 @@ function filterHistorial(period, btn) {
   });
   btn.classList.remove('btn-outline-secondary');
   btn.classList.add('active','btn-primary');
-  renderHistItems(period);
+  window._histPeriod = period;
+  renderHistItems(period, window._histWarehouse);
 }
 
-function renderHistItems(period) {
+function filterHistWh(wh, btn) {
+  document.querySelectorAll('#hist-wh-btns .btn').forEach(b => {
+    b.classList.remove('active','btn-dark');
+    if (!b.classList.contains('btn-outline-secondary')) b.classList.add('btn-outline-secondary');
+  });
+  btn.classList.add('active');
+  if (wh === 'all') btn.classList.add('btn-dark');
+  window._histWarehouse = wh;
+  renderHistItems(window._histPeriod || 'today', wh);
+}
+
+function renderHistItems(period, warehouse) {
   const WAREHOUSES = getWarehouses();
   const all = window._histItems || [];
   const now = new Date();
@@ -748,14 +776,18 @@ function renderHistItems(period) {
 
   let filtered = all.filter(it => {
     const d = getItemActivityDate(it);
-    if (!d) return period === 'all';
-    switch(period) {
-      case 'today':     return d >= startOfToday;
-      case 'yesterday': return d >= startOfYest && d < startOfToday;
-      case 'week':      return d >= startOfWeek;
-      case 'month':     return d >= startOfMonth;
-      default:          return true;
-    }
+    const periodOk = (() => {
+      if (!d) return period === 'all';
+      switch(period) {
+        case 'today':     return d >= startOfToday;
+        case 'yesterday': return d >= startOfYest && d < startOfToday;
+        case 'week':      return d >= startOfWeek;
+        case 'month':     return d >= startOfMonth;
+        default:          return true;
+      }
+    })();
+    const whOk = !warehouse || warehouse === 'all' || it.warehouse === warehouse;
+    return periodOk && whOk;
   });
 
   filtered.sort((a, b) => {
