@@ -370,6 +370,17 @@ function loading(text='Cargando...') {
     <div class="spinner-border text-primary"></div><span>${text}</span>
   </div>`;
 }
+// ── Seguridad: escapar HTML para evitar XSS ──
+function esc(str) {
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;')
+    .replace(/'/g,'&#x27;');
+}
+
 function toast(msg, type='success') {
   const t = document.createElement('div');
   t.className = `alert alert-${type} position-fixed top-0 start-50 translate-middle-x mt-3 shadow`;
@@ -548,7 +559,7 @@ async function renderDashboard() {
           <div class="card-body py-2 px-3">
             <div class="d-flex justify-content-between align-items-center">
               <span class="fw-bold" style="color:${WAREHOUSE_COLORS[i]}">
-                <i class="bi bi-building"></i> ${w}
+                <i class="bi bi-building"></i> ${esc(w)}
               </span>
               <div class="d-flex align-items-center gap-1">
                 <span class="badge rounded-pill" style="background:${WAREHOUSE_COLORS[i]}20;color:${WAREHOUSE_COLORS[i]}">
@@ -591,13 +602,13 @@ async function renderDashboard() {
             <div class="card mb-2" onclick="showView('warehouse',{name:'${tech}',color:'${color}'})" style="cursor:pointer;border-left:4px solid ${color}">
               <div class="card-body py-2 px-3">
                 <div class="d-flex justify-content-between align-items-center">
-                  <span class="fw-bold" style="color:${color}"><i class="bi bi-person-fill"></i> ${tech}</span>
+                  <span class="fw-bold" style="color:${color}"><i class="bi bi-person-fill"></i> ${esc(tech)}</span>
                   <span class="badge rounded-pill" style="background:${color}20;color:${color};font-size:.85rem;font-weight:800">
                     ${its.length} <small style="font-weight:600">parabrisas</small>
                   </span>
                 </div>
                 <div class="mt-1" style="font-size:.78rem;color:#64748b">
-                  ${its.slice(0,3).map(i => `<span class="me-2">#${i._id} ${i.model ? '· ' + i.model.slice(0,25) : ''}</span>`).join('')}
+                  ${its.slice(0,3).map(i => `<span class="me-2">#${esc(i._id)} ${i.model ? '· ' + esc(i.model).slice(0,25) : ''}</span>`).join('')}
                   ${its.length > 3 ? `<span>+${its.length-3} más</span>` : ''}
                 </div>
               </div>
@@ -625,8 +636,8 @@ async function renderDashboard() {
                 #${it._id}
               </div>
               <div class="flex-grow-1 overflow-hidden">
-                <div class="fw-semibold text-truncate">${it.description || 'Sin descripción'}</div>
-                <div class="text-muted small">${it.warehouse || '—'}</div>
+                <div class="fw-semibold text-truncate">${esc(it.description) || 'Sin descripción'}</div>
+                <div class="text-muted small">${esc(it.warehouse) || '—'}</div>
               </div>
               ${statusBadge(it.status)}
             </div>
@@ -655,7 +666,7 @@ async function renderWarehouseDetail(warehouseName, color='#1a56db') {
         style="background:${color}20;color:${color};width:40px;height:40px;font-size:1.2rem">
         <i class="bi bi-building"></i>
       </div>
-      <h5 class="mb-0 fw-bold">${warehouseName}</h5>
+      <h5 class="mb-0 fw-bold">${esc(warehouseName)}</h5>
     </div>
 
     <!-- Filtros -->
@@ -705,7 +716,7 @@ function renderWhItems(items) {
             #${it._id}
           </div>
           <div class="flex-grow-1 overflow-hidden">
-            <div class="fw-semibold text-truncate">${it.description || 'Sin descripción'}</div>
+            <div class="fw-semibold text-truncate">${esc(it.description) || 'Sin descripción'}</div>
             <div class="text-muted small">${formatDate(it.registeredAt)}</div>
           </div>
           ${statusBadge(it.status)}
@@ -774,7 +785,7 @@ async function renderHistorial() {
       ${WAREHOUSES.map((w,i) => {
         const col = WAREHOUSE_COLORS[i % WAREHOUSE_COLORS.length];
         return `<button class="btn btn-sm btn-outline-secondary" style="border-color:${col};color:${col}"
-          onclick="filterHistWh('${w}',this)">${w}</button>`;
+          onclick="filterHistWh('${esc(w)}',this)">${esc(w)}</button>`;
       }).join('')}
     </div>
 
@@ -895,8 +906,8 @@ async function queryHistorial(period, warehouse, page) {
                 #${it._id}
               </div>
               <div class="flex-grow-1 overflow-hidden">
-                <div class="fw-semibold text-truncate">${it.model || it.description || 'Sin descripción'}</div>
-                <div class="text-muted small">${it.warehouse||'—'} · ${hora}</div>
+                <div class="fw-semibold text-truncate">${esc(it.model || it.description) || 'Sin descripción'}</div>
+                <div class="text-muted small">${esc(it.warehouse)||'—'} · ${hora}</div>
               </div>
               ${statusBadge(it.status)}
             </div>
@@ -1098,11 +1109,11 @@ async function renderItemPage(itemId) {
             <table class="table table-sm mb-0">
               <tbody>
                 <tr><td class="text-muted" style="width:110px">Artículo</td><td><strong>#${itemId}</strong></td></tr>
-                ${it.model ? `<tr><td class="text-muted">Vehículo</td><td><span class="fw-semibold">${it.model}</span></td></tr>` : ''}
-                ${it.description ? `<tr><td class="text-muted">Descripción</td><td>${it.description}</td></tr>` : ''}
+                ${it.model ? `<tr><td class="text-muted">Vehículo</td><td><span class="fw-semibold">${esc(it.model)}</span></td></tr>` : ''}
+                ${it.description ? `<tr><td class="text-muted">Descripción</td><td>${esc(it.description)}</td></tr>` : ''}
                 <tr>
                   <td class="text-muted">Técnico</td>
-                  <td><span class="badge rounded-pill" style="background:${color}20;color:${color}">${it.warehouse || '—'}</span></td>
+                  <td><span class="badge rounded-pill" style="background:${color}20;color:${color}">${esc(it.warehouse) || '—'}</span></td>
                 </tr>
                 <tr><td class="text-muted">Registrado</td><td>${formatDate(it.registeredAt)}</td></tr>
                 ${isDone ? `<tr><td class="text-muted">Baja</td><td>${formatDate(it.closedAt)}</td></tr>` : ''}
@@ -1123,8 +1134,8 @@ async function renderItemPage(itemId) {
               <div id="reassign-form" class="d-none mt-3">
                 <h6 class="mb-2 text-muted" style="font-size:.82rem">Selecciona técnico destino:</h6>
                 ${WAREHOUSES.filter(w => w !== it.warehouse).map(w => `
-                  <button class="btn btn-outline-primary w-100 mb-2" onclick="doTransfer('${itemId}','${w}')">
-                    <i class="bi bi-person-fill"></i> ${w}
+                  <button class="btn btn-outline-primary w-100 mb-2" onclick="doTransfer('${itemId}','${esc(w)}')">
+                    <i class="bi bi-person-fill"></i> ${esc(w)}
                   </button>`).join('')}
                 <button class="btn btn-link text-muted w-100" onclick="toggleSection('reassign-form')">Cancelar</button>
               </div>
@@ -1231,7 +1242,7 @@ async function renderItemPage(itemId) {
           </div>
         ` : `
           <div class="alert alert-secondary text-center">
-            <i class="bi bi-info-circle"></i> Este artículo fue dado de baja como <strong>${sInfo.label}</strong>.
+            <i class="bi bi-info-circle"></i> Este artículo fue dado de baja como <strong>${esc(sInfo.label)}</strong>.
           </div>
         `}
       `;
@@ -1626,7 +1637,7 @@ function renderSettings() {
                        width:36px;justify-content:center">
                 ${i+1}
               </span>
-              <input type="text" class="form-control" id="wh-${i}" value="${w}" maxlength="40"
+              <input type="text" class="form-control" id="wh-${i}" value="${esc(w)}" maxlength="40"
                 placeholder="Ej: Camioneta ABCD-12">
               <button class="btn btn-outline-danger" onclick="removeWarehouse(${i})" title="Eliminar">
                 <i class="bi bi-trash3"></i>
