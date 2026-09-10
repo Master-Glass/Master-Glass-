@@ -256,14 +256,41 @@ const FIREBASE_CONFIG = {
 const DEFAULT_WAREHOUSES = ['Bodega 1','Bodega 2','Bodega 3','Bodega 4','Bodega 5'];
 const WAREHOUSE_COLORS   = ['#1a56db','#16a34a','#ea580c','#dc2626','#7c3aed'];
 
+// Cache local — se carga desde Firebase al iniciar
+let _warehouses = [...DEFAULT_WAREHOUSES];
+
 function getWarehouses() {
-  try {
-    const saved = localStorage.getItem('warehouses');
-    return saved ? JSON.parse(saved) : [...DEFAULT_WAREHOUSES];
-  } catch { return [...DEFAULT_WAREHOUSES]; }
+  return _warehouses;
 }
-function saveWarehouses(arr) {
-  localStorage.setItem('warehouses', JSON.stringify(arr));
+
+async function loadWarehouses() {
+  try {
+    if (!db) return;
+    const doc = await db.collection('_meta').doc('config').get();
+    if (doc.exists && doc.data().warehouses) {
+      _warehouses = doc.data().warehouses;
+    } else {
+      // Migrar desde localStorage si existe (primera vez)
+      const saved = localStorage.getItem('warehouses');
+      if (saved) {
+        _warehouses = JSON.parse(saved);
+        await db.collection('_meta').doc('config').set({ warehouses: _warehouses }, { merge: true });
+        localStorage.removeItem('warehouses'); // limpiar después de migrar
+      }
+    }
+  } catch(e) {
+    console.warn('Error cargando bodegas:', e);
+  }
+}
+
+async function saveWarehouses(arr) {
+  _warehouses = arr;
+  try {
+    await db.collection('_meta').doc('config').set({ warehouses: arr }, { merge: true });
+  } catch(e) {
+    console.warn('Error guardando bodegas:', e);
+    toast('Error al guardar en la nube', 'danger');
+  }
 }
 
 // ══════════════════════════════════════════════════
@@ -280,10 +307,13 @@ let _domReady = false, _authReady = false;
 
 function _tryLaunch() {
   if (!_domReady || !_authReady) return;
-  const params = new URLSearchParams(window.location.search);
-  const itemId = params.get('item');
-  if (itemId && !isNaN(Number(itemId))) showView('item', { id: itemId });
-  else showView('dashboard');
+  // Cargar bodegas desde Firebase antes de mostrar la app
+  loadWarehouses().finally(() => {
+    const params = new URLSearchParams(window.location.search);
+    const itemId = params.get('item');
+    if (itemId && !isNaN(Number(itemId))) showView('item', { id: itemId });
+    else showView('dashboard');
+  });
 }
 
 try {
@@ -1702,18 +1732,18 @@ function removeWarehouse(idx) {
   });
 }
 
-function saveWarehouseNames() {
+async function saveWarehouseNames() {
   const inputs = document.getElementById('wh-list').querySelectorAll('input');
   const names = Array.from(inputs).map((inp, i) => inp.value.trim() || `Bodega ${i+1}`);
   if (new Set(names).size !== names.length) {
     toast('Los nombres deben ser únicos', 'warning'); return;
   }
-  saveWarehouses(names);
-  toast('✓ Nombres guardados. Recargando...');
+  await saveWarehouses(names);
+  toast('✓ Nombres guardados en la nube. Recargando...');
   setTimeout(() => location.reload(), 1200);
 }
-function resetWarehouseNames() {
-  saveWarehouses([...DEFAULT_WAREHOUSES]);
+async function resetWarehouseNames() {
+  await saveWarehouses([...DEFAULT_WAREHOUSES]);
   toast('✓ Nombres restablecidos');
   setTimeout(() => renderSettings(), 600);
 }
