@@ -1732,15 +1732,73 @@ function removeWarehouse(idx) {
   });
 }
 
+// Migra todos los artículos de una bodega al nuevo nombre, y actualiza el doc de stats.
+// Se llama automáticamente cuando se detecta un renombre en saveWarehouseNames().
+async function migrateWarehouseItems(oldName, newName) {
+  // 1. Actualizar todos los artículos que tengan el nombre anterior
+  const snap = await db.collection('items').where('warehouse', '==', oldName).get();
+  if (!snap.empty) {
+    const CHUNK = 400; // límite seguro por debajo del máximo de Firestore (500)
+    for (let i = 0; i < snap.docs.length; i += CHUNK) {
+      const batch = db.batch();
+      snap.docs.slice(i, i + CHUNK).forEach(d => batch.update(d.ref, { warehouse: newName }));
+      await batch.commit();
+    }
+  }
+  // 2. Renombrar la clave en el doc de stats
+  try {
+    const statsRef = db.collection('_meta').doc('stats');
+    const statsDoc = await statsRef.get();
+    if (statsDoc.exists) {
+      const wh = statsDoc.data().wh || {};
+      if (wh[oldName] !== undefined) {
+        const upd = {};
+        upd[`wh.${newName}`] = wh[oldName];
+        upd[`wh.${oldName}`] = firebase.firestore.FieldValue.delete();
+        await statsRef.update(upd);
+      }
+    }
+  } catch(e) {
+    // Si falla el stats, no es crítico — se puede reconstruir
+    console.warn('Stats rename warning:', e);
+  }
+  return snap.size;
+}
+
 async function saveWarehouseNames() {
   const inputs = document.getElementById('wh-list').querySelectorAll('input');
   const names = Array.from(inputs).map((inp, i) => inp.value.trim() || `Bodega ${i+1}`);
   if (new Set(names).size !== names.length) {
     toast('Los nombres deben ser únicos', 'warning'); return;
   }
+
+  // Detectar bodegas renombradas (mismo índice, nombre distinto)
+  const oldNames = [..._warehouses];
+  const minLen = Math.min(oldNames.length, names.length);
+  const renames = [];
+  for (let i = 0; i < minLen; i++) {
+    if (oldNames[i] && names[i] && oldNames[i] !== names[i]) {
+      renames.push({ from: oldNames[i], to: names[i] });
+    }
+  }
+
+  if (renames.length > 0) {
+    toast(`Actualizando artículos en ${renames.length} bodega${renames.length > 1 ? 's' : ''}...`);
+    try {
+      for (const r of renames) {
+        await migrateWarehouseItems(r.from, r.to);
+        console.log(`✓ Renombrada: "${r.from}" → "${r.to}"`);
+      }
+    } catch(e) {
+      toast('Error al actualizar artículos. Intenta de nuevo.', 'danger');
+      console.error(e);
+      return;
+    }
+  }
+
   await saveWarehouses(names);
-  toast('✓ Nombres guardados en la nube. Recargando...');
-  setTimeout(() => location.reload(), 1200);
+  toast('✓ Bodegas guardadas. Recargando...');
+  setTimeout(() => location.reload(), 1500);
 }
 async function resetWarehouseNames() {
   await saveWarehouses([...DEFAULT_WAREHOUSES]);
