@@ -81,18 +81,25 @@
     }
     .nav-btn i { font-size: 1.35rem; }
     .nav-btn.active { color: #38bdf8; }
-    .nav-btn.scan-btn {
+    /* ── Botón flotante QR (FAB) ── */
+    .scan-fab {
+      position: fixed;
+      bottom: 72px;   /* justo encima del nav */
+      right: 18px;
+      z-index: 910;
+      width: 60px; height: 60px;
+      border-radius: 50%;
       background: linear-gradient(135deg, #0ea5e9, #38bdf8);
-      color: #fff !important;
-      border-radius: 50%; width: 58px; height: 58px;
-      margin-top: -22px; margin-bottom: 4px;
-      flex: 0 0 72px;
-      box-shadow: 0 0 28px rgba(14,165,233,0.6), 0 4px 16px rgba(0,0,0,0.5);
-      border: 2px solid rgba(255,255,255,0.15);
+      color: #fff;
+      border: 2px solid rgba(255,255,255,0.2);
+      font-size: 1.55rem;
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 0 28px rgba(14,165,233,0.55), 0 4px 18px rgba(0,0,0,0.5);
+      cursor: pointer;
       transition: transform .15s, box-shadow .15s;
     }
-    .nav-btn.scan-btn:hover { transform: scale(1.08); box-shadow: 0 0 38px rgba(14,165,233,0.75), 0 6px 20px rgba(0,0,0,0.5); }
-    .nav-btn.scan-btn.active { background: linear-gradient(135deg, #0284c7, #0ea5e9); }
+    .scan-fab:hover  { transform: scale(1.08); box-shadow: 0 0 40px rgba(14,165,233,0.8), 0 6px 22px rgba(0,0,0,0.55); }
+    .scan-fab.active { background: linear-gradient(135deg, #0284c7, #0ea5e9); }
 
     /* ── Cards — efecto vidrio esmerilado ── */
     .card {
@@ -221,13 +228,15 @@
   <button class="nav-btn" id="nav-search" onclick="showView('search')">
     <i class="bi bi-search"></i>Buscar
   </button>
-  <button class="nav-btn scan-btn" id="nav-scan" onclick="showView('scan')">
-    <i class="bi bi-qr-code-scan" style="font-size:1.6rem"></i>
-  </button>
   <button class="nav-btn" id="nav-history" onclick="showView('history')">
     <i class="bi bi-clock-history"></i>Historial
   </button>
 </div>
+
+<!-- Botón flotante QR -->
+<button id="nav-scan" class="scan-fab no-print" onclick="showView('scan')" title="Escanear QR">
+  <i class="bi bi-qr-code-scan"></i>
+</button>
 
 
 <!-- SCRIPTS -->
@@ -394,9 +403,9 @@ async function stopScanner() {
   }
 }
 function setNav(view) {
-  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.nav-btn, .scan-fab').forEach(b => b.classList.remove('active'));
   const map = { dashboard:'nav-dashboard', scan:'nav-scan', history:'nav-history', search:'nav-search' };
-  if (map[view]) document.getElementById(map[view]).classList.add('active');
+  if (map[view]) document.getElementById(map[view])?.classList.add('active');
 }
 function loading(text='Cargando...') {
   return `<div class="loading-overlay">
