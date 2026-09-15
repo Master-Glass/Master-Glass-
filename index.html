@@ -267,6 +267,7 @@ const FIREBASE_CONFIG = {
 // ══════════════════════════════════════════════════
 const DEFAULT_WAREHOUSES = ['Bodega 1','Bodega 2','Bodega 3','Bodega 4','Bodega 5'];
 const WAREHOUSE_COLORS   = ['#1a56db','#16a34a','#ea580c','#dc2626','#7c3aed'];
+const GLASS_TYPES        = ['Parabrisas','Luneta','Vidrio puerta','Aleta','Otro'];
 
 // Cache local — se carga desde Firebase al iniciar
 let _warehouses = [...DEFAULT_WAREHOUSES];
@@ -722,13 +723,19 @@ async function renderWarehouseDetail(warehouseName, color='#1a56db') {
         autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
     </div>
 
-    <!-- Filtros -->
-    <div class="d-flex gap-2 mb-3 flex-wrap" id="filter-btns">
+    <!-- Filtros de estado -->
+    <div class="d-flex gap-2 mb-2 flex-wrap" id="filter-btns">
       <button class="btn btn-sm btn-success active" onclick="filterItems('available', this)">Disponibles</button>
       <button class="btn btn-sm btn-outline-secondary" onclick="filterItems('all', this)">Todos</button>
       <button class="btn btn-sm btn-outline-danger" onclick="filterItems('sold', this)">Vendidos</button>
       <button class="btn btn-sm btn-outline-warning" onclick="filterItems('merma', this)">Merma</button>
       <button class="btn btn-sm btn-outline-primary" onclick="filterItems('devolucion', this)">Devolución</button>
+    </div>
+
+    <!-- Filtros de tipo de vidrio -->
+    <div class="d-flex gap-2 mb-3 flex-wrap" id="type-filter-btns">
+      <button class="btn btn-sm btn-outline-secondary active" onclick="filterWhType('all',this)">🔲 Todos</button>
+      ${GLASS_TYPES.map(t => `<button class="btn btn-sm btn-outline-secondary" onclick="filterWhType('${t}',this)">${t}</button>`).join('')}
     </div>
 
     <div id="warehouse-items">${loading('Cargando artículos...')}</div>
@@ -746,6 +753,7 @@ async function renderWarehouseDetail(warehouseName, color='#1a56db') {
     window._whColor    = color;
     window._whAllItems = items;          // cache completo
     window._whStatus   = 'available';    // filtro inicial
+    window._whType     = 'all';          // filtro de tipo inicial
     applyWhFilters();
 
   } catch(e) {
@@ -771,8 +779,11 @@ function renderWhItems(items) {
             #${it._id}
           </div>
           <div class="flex-grow-1 overflow-hidden">
-            <div class="fw-semibold text-truncate">${esc(it.model) || esc(it.description) || 'Sin modelo'}</div>
-            <div class="text-muted small">${esc(it.description) ? esc(it.description) + ' · ' : ''}${formatDate(it.registeredAt)}</div>
+            <div class="fw-semibold text-truncate">${esc(it.model) || 'Sin modelo'}</div>
+            <div class="text-muted small d-flex align-items-center gap-2 flex-wrap">
+              ${it.glassType ? `<span class="badge rounded-pill" style="background:#0ea5e920;color:#0ea5e9;font-size:.68rem">${esc(it.glassType)}${it.glassType==='Otro'&&it.description?' · '+esc(it.description):''}</span>` : (it.description ? `<span>${esc(it.description)}</span>` : '')}
+              <span>${formatDate(it.registeredAt)}</span>
+            </div>
           </div>
           ${statusBadge(it.status)}
         </div>
@@ -796,23 +807,32 @@ function filterItems(status, btn) {
   applyWhFilters();
 }
 
-// Aplica filtro de estado + búsqueda de texto sobre el cache en memoria
+function filterWhType(type, btn) {
+  document.querySelectorAll('#type-filter-btns .btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  window._whType = type;
+  applyWhFilters();
+}
+
+// Aplica filtro de estado + tipo de vidrio + búsqueda de texto sobre el cache en memoria
 function applyWhFilters() {
   if (!window._whAllItems) return;
   const status  = window._whStatus || 'available';
+  const type    = window._whType   || 'all';
   const rawText = (document.getElementById('wh-search-input')?.value || '').trim().toLowerCase();
 
   let items = window._whAllItems;
 
   // Filtro de estado
-  if (status !== 'all') {
-    items = items.filter(it => it.status === status);
-  }
+  if (status !== 'all') items = items.filter(it => it.status === status);
 
-  // Filtro de texto (busca en modelo, descripción y número de artículo)
+  // Filtro de tipo de vidrio
+  if (type !== 'all') items = items.filter(it => it.glassType === type);
+
+  // Filtro de texto (busca en modelo, tipo, descripción y número)
   if (rawText.length > 0) {
     items = items.filter(it => {
-      const haystack = [it.model, it.description, String(it._id)].join(' ').toLowerCase();
+      const haystack = [it.model, it.glassType, it.description, String(it._id)].join(' ').toLowerCase();
       return haystack.includes(rawText);
     });
   }
@@ -841,12 +861,18 @@ async function renderSearch() {
     </div>
 
     <!-- Filtro por estado -->
-    <div class="d-flex gap-2 mb-3 flex-wrap" id="gs-status-btns">
+    <div class="d-flex gap-2 mb-2 flex-wrap" id="gs-status-btns">
       <button class="btn btn-sm btn-outline-secondary active" onclick="setGsStatus('all',this)">Todos</button>
       <button class="btn btn-sm btn-outline-secondary" onclick="setGsStatus('available',this)">Disponibles</button>
       <button class="btn btn-sm btn-outline-secondary" onclick="setGsStatus('sold',this)">Vendidos</button>
       <button class="btn btn-sm btn-outline-secondary" onclick="setGsStatus('merma',this)">Merma</button>
       <button class="btn btn-sm btn-outline-secondary" onclick="setGsStatus('devolucion',this)">Devolución</button>
+    </div>
+
+    <!-- Filtro por tipo de vidrio -->
+    <div class="d-flex gap-2 mb-3 flex-wrap" id="gs-type-btns">
+      <button class="btn btn-sm btn-outline-secondary active" onclick="setGsType('all',this)">🔲 Todos</button>
+      ${GLASS_TYPES.map(t => `<button class="btn btn-sm btn-outline-secondary" onclick="setGsType('${t}',this)">${t}</button>`).join('')}
     </div>
 
     <div id="gs-results">
@@ -865,12 +891,20 @@ async function renderSearch() {
 }
 
 window._gsStatus = 'all';
+window._gsType   = 'all';
 window._gsDebounce = null;
 
 function setGsStatus(status, btn) {
   document.querySelectorAll('#gs-status-btns .btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
   window._gsStatus = status;
+  runGlobalSearch();
+}
+
+function setGsType(type, btn) {
+  document.querySelectorAll('#gs-type-btns .btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  window._gsType = type;
   runGlobalSearch();
 }
 
@@ -912,19 +946,23 @@ function runGlobalSearch() {
     return;
   }
 
+  const type = window._gsType || 'all';
   let results = window._searchCache;
 
   // Filtro de texto
-  const words = rawText.split(/\s+/).filter(Boolean);
-  results = results.filter(it => {
-    const haystack = [it.model, it.description, String(it._id), it.warehouse].join(' ').toLowerCase();
-    return words.every(w => haystack.includes(w));
-  });
+  if (rawText.length > 0) {
+    const words = rawText.split(/\s+/).filter(Boolean);
+    results = results.filter(it => {
+      const haystack = [it.model, it.glassType, it.description, String(it._id), it.warehouse].join(' ').toLowerCase();
+      return words.every(w => haystack.includes(w));
+    });
+  }
 
   // Filtro de estado
-  if (status !== 'all') {
-    results = results.filter(it => it.status === status);
-  }
+  if (status !== 'all') results = results.filter(it => it.status === status);
+
+  // Filtro de tipo de vidrio
+  if (type !== 'all') results = results.filter(it => it.glassType === type);
 
   // Ordenar: disponibles primero, luego por número
   results.sort((a, b) => {
@@ -954,10 +992,10 @@ function runGlobalSearch() {
               #${it._id}
             </div>
             <div class="flex-grow-1 overflow-hidden">
-              <div class="fw-semibold text-truncate">${esc(it.model) || esc(it.description) || 'Sin modelo'}</div>
+              <div class="fw-semibold text-truncate">${esc(it.model) || 'Sin modelo'}</div>
               <div class="text-muted small d-flex gap-2 align-items-center flex-wrap">
                 <span><i class="bi bi-building me-1" style="color:${color}"></i>${esc(it.warehouse) || '—'}</span>
-                ${esc(it.description) ? `<span class="text-truncate" style="max-width:140px">${esc(it.description)}</span>` : ''}
+                ${it.glassType ? `<span class="badge rounded-pill" style="background:#0ea5e920;color:#0ea5e9;font-size:.66rem">${esc(it.glassType)}${it.glassType==='Otro'&&it.description?' · '+esc(it.description):''}</span>` : (it.description ? `<span class="text-truncate" style="max-width:140px">${esc(it.description)}</span>` : '')}
               </div>
             </div>
             ${statusBadge(it.status)}
@@ -1288,9 +1326,16 @@ async function renderItemPage(itemId) {
                 placeholder="Ej: Toyota Corolla 2020 - parabrisas delantero">
             </div>
             <div class="mb-3">
-              <label class="form-label fw-semibold">Descripción del vidrio <span class="text-muted small">(opcional)</span></label>
-              <textarea class="form-control" id="inp-desc" rows="2"
-                placeholder="Ej: Ventana trasera, color bronce..."></textarea>
+              <label class="form-label fw-semibold"><i class="bi bi-grid-1x2-fill me-1 text-success"></i>Tipo de vidrio <span class="text-danger">*</span></label>
+              <select class="form-select" id="inp-glass-type" onchange="toggleOtroField()">
+                <option value="">— Selecciona tipo —</option>
+                ${GLASS_TYPES.map(t => `<option value="${t}">${t}</option>`).join('')}
+              </select>
+            </div>
+            <div class="mb-3 d-none" id="otro-desc-wrap">
+              <label class="form-label fw-semibold">¿A qué pertenece? <span class="text-danger">*</span></label>
+              <input type="text" class="form-control" id="inp-desc"
+                placeholder="Ej: Ventana trasera lateral izquierda...">
             </div>
             <div class="mb-4">
               <label class="form-label fw-semibold">Técnico / Vehículo <span class="text-danger">*</span></label>
@@ -1325,7 +1370,8 @@ async function renderItemPage(itemId) {
               <tbody>
                 <tr><td class="text-muted" style="width:110px">Artículo</td><td><strong>#${itemId}</strong></td></tr>
                 ${it.model ? `<tr><td class="text-muted">Vehículo</td><td><span class="fw-semibold">${esc(it.model)}</span></td></tr>` : ''}
-                ${it.description ? `<tr><td class="text-muted">Descripción</td><td>${esc(it.description)}</td></tr>` : ''}
+                ${it.glassType ? `<tr><td class="text-muted">Tipo</td><td><span class="badge rounded-pill" style="background:#0ea5e920;color:#0ea5e9">${esc(it.glassType)}</span></td></tr>` : ''}
+                ${it.glassType === 'Otro' && it.description ? `<tr><td class="text-muted">Detalle</td><td>${esc(it.description)}</td></tr>` : (!it.glassType && it.description ? `<tr><td class="text-muted">Descripción</td><td>${esc(it.description)}</td></tr>` : '')}
                 <tr>
                   <td class="text-muted">Técnico</td>
                   <td><span class="badge rounded-pill" style="background:${color}20;color:${color}">${esc(it.warehouse) || '—'}</span></td>
@@ -1507,11 +1553,20 @@ async function doBaja(itemId, status) {
   }
 }
 
+function toggleOtroField() {
+  const tipo = document.getElementById('inp-glass-type')?.value;
+  const wrap = document.getElementById('otro-desc-wrap');
+  if (wrap) wrap.classList.toggle('d-none', tipo !== 'Otro');
+}
+
 async function registerItem(itemId) {
   const model     = document.getElementById('inp-model').value.trim();
-  const desc      = document.getElementById('inp-desc').value.trim();
+  const glassType = document.getElementById('inp-glass-type')?.value || '';
+  const desc      = document.getElementById('inp-desc')?.value.trim() || '';
   const warehouse = document.getElementById('inp-warehouse').value;
   if (!model)     { toast('Ingresa el modelo del vehículo', 'warning'); return; }
+  if (!glassType) { toast('Selecciona el tipo de vidrio', 'warning'); return; }
+  if (glassType === 'Otro' && !desc) { toast('Describe a qué pertenece el vidrio', 'warning'); return; }
   if (!warehouse) { toast('Selecciona técnico o vehículo', 'warning'); return; }
 
   const btn = document.querySelector('#item-body .btn-primary');
@@ -1520,7 +1575,7 @@ async function registerItem(itemId) {
 
   try {
     await db.collection('items').doc(String(itemId)).set({
-      model, description: desc, warehouse, status: 'available',
+      model, glassType, description: glassType === 'Otro' ? desc : '', warehouse, status: 'available',
       registeredAt: firebase.firestore.FieldValue.serverTimestamp()
     });
     // Actualizar contador global
