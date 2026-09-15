@@ -218,6 +218,9 @@
   <button class="nav-btn active" id="nav-dashboard" onclick="showView('dashboard')">
     <i class="bi bi-grid-3x3-gap-fill"></i>Inventario
   </button>
+  <button class="nav-btn" id="nav-search" onclick="showView('search')">
+    <i class="bi bi-search"></i>Buscar
+  </button>
   <button class="nav-btn scan-btn" id="nav-scan" onclick="showView('scan')">
     <i class="bi bi-qr-code-scan" style="font-size:1.6rem"></i>
   </button>
@@ -392,7 +395,7 @@ async function stopScanner() {
 }
 function setNav(view) {
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
-  const map = { dashboard:'nav-dashboard', scan:'nav-scan', history:'nav-history' };
+  const map = { dashboard:'nav-dashboard', scan:'nav-scan', history:'nav-history', search:'nav-search' };
   if (map[view]) document.getElementById(map[view]).classList.add('active');
 }
 function loading(text='Cargando...') {
@@ -467,6 +470,7 @@ async function showView(view, params={}, addToHistory=true) {
     case 'settings':   return renderSettings();
     case 'history':    return renderHistorial();
     case 'finish':     return renderFinishJob(params.id);
+    case 'search':     return renderSearch();
   }
 }
 
@@ -699,6 +703,16 @@ async function renderWarehouseDetail(warehouseName, color='#1a56db') {
       <h5 class="mb-0 fw-bold">${esc(warehouseName)}</h5>
     </div>
 
+    <!-- Buscador -->
+    <div class="mb-3 position-relative">
+      <i class="bi bi-search position-absolute" style="left:12px;top:50%;transform:translateY(-50%);color:#64748b;pointer-events:none"></i>
+      <input type="search" id="wh-search-input" class="form-control"
+        style="padding-left:36px;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.15);color:#e2e8f0;border-radius:10px"
+        placeholder="Buscar por modelo, descripción o N°..."
+        oninput="applyWhFilters()"
+        autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+    </div>
+
     <!-- Filtros -->
     <div class="d-flex gap-2 mb-3 flex-wrap" id="filter-btns">
       <button class="btn btn-sm btn-success active" onclick="filterItems('available', this)">Disponibles</button>
@@ -712,16 +726,18 @@ async function renderWarehouseDetail(warehouseName, color='#1a56db') {
   `;
 
   try {
+    // Cargar TODOS los artículos de la bodega en memoria para filtrar sin ir a Firestore
     const snap = await db.collection('items')
       .where('warehouse','==', warehouseName)
-      .where('status','==','available')
       .get();
     const items = snap.docs.map(d => ({ _id: d.id, ...d.data() }))
       .sort((a, b) => Number(a._id) - Number(b._id));
 
-    window._whName  = warehouseName;
-    window._whColor = color;
-    renderWhItems(snap.docs.map(d => ({_id:d.id,...d.data()})));
+    window._whName     = warehouseName;
+    window._whColor    = color;
+    window._whAllItems = items;          // cache completo
+    window._whStatus   = 'available';    // filtro inicial
+    applyWhFilters();
 
   } catch(e) {
     document.getElementById('warehouse-items').innerHTML =
@@ -767,19 +783,179 @@ function filterItems(status, btn) {
     }
   });
   btn.classList.add('active');
+  window._whStatus = status;
+  applyWhFilters();
+}
 
-  const wh = window._whName;
-  if (!wh) return;
-  const el = document.getElementById('warehouse-items');
-  el.innerHTML = `<div class="text-center py-4 text-muted"><div class="spinner-border spinner-border-sm me-2"></div>Cargando...</div>`;
-  let q = db.collection('items').where('warehouse','==', wh);
-  if (status !== 'all') q = q.where('status','==', status);
-  q.get().then(snap => {
-    const items = snap.docs.map(d => ({_id:d.id,...d.data()})).sort((a,b)=>Number(a._id)-Number(b._id));
-    renderWhItems(items);
-  }).catch(e => {
-    el.innerHTML = `<div class="alert alert-danger">Error: ${e.message}</div>`;
+// Aplica filtro de estado + búsqueda de texto sobre el cache en memoria
+function applyWhFilters() {
+  if (!window._whAllItems) return;
+  const status  = window._whStatus || 'available';
+  const rawText = (document.getElementById('wh-search-input')?.value || '').trim().toLowerCase();
+
+  let items = window._whAllItems;
+
+  // Filtro de estado
+  if (status !== 'all') {
+    items = items.filter(it => it.status === status);
+  }
+
+  // Filtro de texto (busca en modelo, descripción y número de artículo)
+  if (rawText.length > 0) {
+    items = items.filter(it => {
+      const haystack = [it.model, it.description, String(it._id)].join(' ').toLowerCase();
+      return haystack.includes(rawText);
+    });
+  }
+
+  renderWhItems(items);
+}
+
+// ══════════════════════════════════════════════════
+//  VISTA: BUSCADOR GLOBAL
+// ══════════════════════════════════════════════════
+async function renderSearch() {
+  if (!requireFirebase()) return;
+  const c = document.getElementById('main-content');
+  window._searchCache = null; // limpiar cache al entrar
+
+  c.innerHTML = `
+    <h5 class="fw-bold mb-3"><i class="bi bi-search me-2"></i>Buscador general</h5>
+
+    <div class="mb-3 position-relative">
+      <i class="bi bi-search position-absolute" style="left:12px;top:50%;transform:translateY(-50%);color:#64748b;pointer-events:none"></i>
+      <input type="search" id="global-search-input" class="form-control"
+        style="padding-left:36px;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.15);color:#e2e8f0;border-radius:10px;font-size:1rem"
+        placeholder="Buscar en todas las bodegas…"
+        oninput="onGlobalSearch()"
+        autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+    </div>
+
+    <!-- Filtro por estado -->
+    <div class="d-flex gap-2 mb-3 flex-wrap" id="gs-status-btns">
+      <button class="btn btn-sm btn-outline-secondary active" onclick="setGsStatus('all',this)">Todos</button>
+      <button class="btn btn-sm btn-outline-secondary" onclick="setGsStatus('available',this)">Disponibles</button>
+      <button class="btn btn-sm btn-outline-secondary" onclick="setGsStatus('sold',this)">Vendidos</button>
+      <button class="btn btn-sm btn-outline-secondary" onclick="setGsStatus('merma',this)">Merma</button>
+      <button class="btn btn-sm btn-outline-secondary" onclick="setGsStatus('devolucion',this)">Devolución</button>
+    </div>
+
+    <div id="gs-results">
+      <p class="text-muted text-center py-5">
+        <i class="bi bi-search d-block mb-2" style="font-size:2rem;opacity:.3"></i>
+        Escribe para buscar en todas las bodegas
+      </p>
+    </div>
+  `;
+
+  // Pre-cargar todos los artículos en segundo plano
+  _preloadSearchCache();
+
+  // Enfocar el input automáticamente
+  setTimeout(() => document.getElementById('global-search-input')?.focus(), 100);
+}
+
+window._gsStatus = 'all';
+window._gsDebounce = null;
+
+function setGsStatus(status, btn) {
+  document.querySelectorAll('#gs-status-btns .btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  window._gsStatus = status;
+  runGlobalSearch();
+}
+
+function onGlobalSearch() {
+  clearTimeout(window._gsDebounce);
+  window._gsDebounce = setTimeout(runGlobalSearch, 180);
+}
+
+async function _preloadSearchCache() {
+  try {
+    const snap = await db.collection('items').get();
+    window._searchCache = snap.docs.map(d => ({ _id: d.id, ...d.data() }));
+    // Si ya hay texto buscado, relanzar la búsqueda con el cache completo
+    const q = document.getElementById('global-search-input')?.value?.trim();
+    if (q) runGlobalSearch();
+  } catch(e) {
+    console.warn('Preload search cache error:', e);
+  }
+}
+
+function runGlobalSearch() {
+  const rawText = (document.getElementById('global-search-input')?.value || '').trim().toLowerCase();
+  const status  = window._gsStatus || 'all';
+  const el      = document.getElementById('gs-results');
+  if (!el) return;
+
+  if (rawText.length === 0) {
+    el.innerHTML = `<p class="text-muted text-center py-5">
+      <i class="bi bi-search d-block mb-2" style="font-size:2rem;opacity:.3"></i>
+      Escribe para buscar en todas las bodegas
+    </p>`;
+    return;
+  }
+
+  if (!window._searchCache) {
+    el.innerHTML = `<div class="text-center py-4 text-muted">
+      <div class="spinner-border spinner-border-sm me-2"></div>Cargando artículos...
+    </div>`;
+    return;
+  }
+
+  let results = window._searchCache;
+
+  // Filtro de texto
+  const words = rawText.split(/\s+/).filter(Boolean);
+  results = results.filter(it => {
+    const haystack = [it.model, it.description, String(it._id), it.warehouse].join(' ').toLowerCase();
+    return words.every(w => haystack.includes(w));
   });
+
+  // Filtro de estado
+  if (status !== 'all') {
+    results = results.filter(it => it.status === status);
+  }
+
+  // Ordenar: disponibles primero, luego por número
+  results.sort((a, b) => {
+    const order = { available: 0, devolucion: 1, merma: 2, sold: 3 };
+    const diff = (order[a.status] ?? 4) - (order[b.status] ?? 4);
+    return diff !== 0 ? diff : Number(a._id) - Number(b._id);
+  });
+
+  if (results.length === 0) {
+    el.innerHTML = `<p class="text-muted text-center py-5">
+      <i class="bi bi-inbox d-block mb-2" style="font-size:2rem;opacity:.3"></i>
+      Sin resultados para "<strong>${esc(rawText)}</strong>"
+    </p>`;
+    return;
+  }
+
+  const WAREHOUSES = getWarehouses();
+  el.innerHTML = `<div class="mb-2 text-muted small">${results.length} resultado${results.length !== 1 ? 's' : ''}</div>` +
+    results.map(it => {
+      const wIdx = WAREHOUSES.indexOf(it.warehouse);
+      const color = WAREHOUSE_COLORS[wIdx >= 0 ? wIdx % WAREHOUSE_COLORS.length : 0];
+      return `
+        <div class="card mb-2 item-row" onclick="showView('item',{id:'${it._id}'})">
+          <div class="card-body py-2 px-3 d-flex align-items-center gap-3">
+            <div class="rounded-circle d-flex align-items-center justify-content-center flex-shrink-0"
+              style="background:${color}18;color:${color};width:38px;height:38px;font-weight:800;font-size:.82rem">
+              #${it._id}
+            </div>
+            <div class="flex-grow-1 overflow-hidden">
+              <div class="fw-semibold text-truncate">${esc(it.model) || esc(it.description) || 'Sin modelo'}</div>
+              <div class="text-muted small d-flex gap-2 align-items-center flex-wrap">
+                <span><i class="bi bi-building me-1" style="color:${color}"></i>${esc(it.warehouse) || '—'}</span>
+                ${esc(it.description) ? `<span class="text-truncate" style="max-width:140px">${esc(it.description)}</span>` : ''}
+              </div>
+            </div>
+            ${statusBadge(it.status)}
+          </div>
+        </div>
+      `;
+    }).join('');
 }
 
 // ══════════════════════════════════════════════════
