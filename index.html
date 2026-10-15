@@ -1942,9 +1942,17 @@ function renderSettings() {
           <button class="btn btn-primary flex-grow-1" onclick="saveWarehouseNames()">
             <i class="bi bi-check-lg"></i> Guardar cambios
           </button>
-          <button class="btn btn-outline-secondary" onclick="resetWarehouseNames()">
-            Restablecer
+          <button class="btn btn-outline-danger btn-sm" onclick="resetWarehouseNames()" title="Restablecer a nombres genéricos">
+            <i class="bi bi-arrow-counterclockwise"></i> Restablecer
           </button>
+        </div>
+      </div>
+      <div class="mt-2">
+        <button id="btn-recover" class="btn btn-outline-info btn-sm w-100" onclick="recoverWarehousesFromItems()">
+          <i class="bi bi-database-gear me-1"></i>Recuperar nombres desde artículos guardados
+        </button>
+        <div class="text-secondary mt-1" style="font-size:0.75rem">
+          Útil si los nombres se borraron accidentalmente — lee las bodegas directamente desde los artículos en la nube.
         </div>
       </div>
     </div>
@@ -2058,9 +2066,34 @@ async function saveWarehouseNames() {
   setTimeout(() => location.reload(), 1500);
 }
 async function resetWarehouseNames() {
+  const confirmed = confirm('⚠️ ¿Seguro que quieres restablecer todos los nombres a "Bodega 1, 2, 3..."?\nEsto NO afecta los artículos, pero tendrás que volver a configurar los nombres.');
+  if (!confirmed) return;
   await saveWarehouses([...DEFAULT_WAREHOUSES]);
   toast('✓ Nombres restablecidos');
   setTimeout(() => renderSettings(), 600);
+}
+
+// Recupera los nombres reales leyendo los valores únicos de warehouse en los artículos
+async function recoverWarehousesFromItems() {
+  if (!requireFirebase()) return;
+  const btn = document.getElementById('btn-recover');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Recuperando...'; }
+  try {
+    const snap = await db.collection('items').where('status','==','available').get();
+    const namesSet = new Set();
+    snap.docs.forEach(d => { const w = d.data().warehouse; if (w) namesSet.add(w); });
+    // También revisar ítems de otros estados para no perder bodegas sin disponibles
+    const snap2 = await db.collection('items').get();
+    snap2.docs.forEach(d => { const w = d.data().warehouse; if (w) namesSet.add(w); });
+    const names = Array.from(namesSet).sort();
+    if (names.length === 0) { toast('No se encontraron bodegas en los artículos', 'warning'); return; }
+    await saveWarehouses(names);
+    toast(`✓ Recuperadas ${names.length} bodegas. Recargando...`);
+    setTimeout(() => location.reload(), 1500);
+  } catch(e) {
+    toast('Error al recuperar: ' + e.message, 'danger');
+    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="bi bi-arrow-counterclockwise me-1"></i>Recuperar nombres desde artículos'; }
+  }
 }
 function saveAppUrl() {
   const url = document.getElementById('app-url-input').value.trim();
