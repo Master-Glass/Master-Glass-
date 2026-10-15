@@ -2032,18 +2032,27 @@ async function migrateWarehouseItems(oldName, newName) {
 
 async function saveWarehouseNames() {
   const inputs = document.getElementById('wh-list').querySelectorAll('input');
-  const names = Array.from(inputs).map((inp, i) => inp.value.trim() || `Bodega ${i+1}`);
-  if (new Set(names).size !== names.length) {
+  const newNames = Array.from(inputs).map((inp, i) => inp.value.trim() || `Bodega ${i+1}`);
+  if (new Set(newNames).size !== newNames.length) {
     toast('Los nombres deben ser únicos', 'warning'); return;
   }
 
-  // Detectar bodegas renombradas (mismo índice, nombre distinto)
   const oldNames = [..._warehouses];
-  const minLen = Math.min(oldNames.length, names.length);
+  const oldSet   = new Set(oldNames);
+  const newSet   = new Set(newNames);
+
+  // Un verdadero renombre ocurre cuando:
+  // • el nombre viejo ya no existe en la nueva lista (fue eliminado)
+  // • el nombre nuevo no existía en la lista vieja (es realmente nuevo)
+  // Si el nombre nuevo ya estaba en la lista vieja en otra posición,
+  // es solo un reordenamiento — no hay que migrar artículos.
+  const minLen = Math.min(oldNames.length, newNames.length);
   const renames = [];
   for (let i = 0; i < minLen; i++) {
-    if (oldNames[i] && names[i] && oldNames[i] !== names[i]) {
-      renames.push({ from: oldNames[i], to: names[i] });
+    const oldN = oldNames[i];
+    const newN = newNames[i];
+    if (oldN !== newN && !newSet.has(oldN) && !oldSet.has(newN)) {
+      renames.push({ from: oldN, to: newN });
     }
   }
 
@@ -2061,7 +2070,7 @@ async function saveWarehouseNames() {
     }
   }
 
-  await saveWarehouses(names);
+  await saveWarehouses(newNames);
   toast('✓ Bodegas guardadas. Recargando...');
   setTimeout(() => location.reload(), 1500);
 }
